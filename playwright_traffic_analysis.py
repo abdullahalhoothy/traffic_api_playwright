@@ -675,7 +675,7 @@ async def capture_google_maps_screenshot(
         # Select traffic type (typical or live)
         try:
             if day_of_week is not None or target_time is not None:
-                await page.wait_for_timeout(sec(5))
+                # await page.wait_for_timeout(sec(5))
                 if await select_typical_mode(page):
                     # await page.wait_for_timeout(sec(10))
 
