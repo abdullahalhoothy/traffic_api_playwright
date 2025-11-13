@@ -9,7 +9,6 @@ import shutil
 import time
 from collections import Counter
 from typing import Any, Dict, Optional, Tuple, Union
-from urllib.parse import urljoin
 
 import numpy as np
 from PIL import Image
@@ -70,6 +69,7 @@ TRAFFIC_SCREENSHOTS_STATIC_PATH = os.path.join(
     "images",
     "traffic_screenshots",
 )
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
 
 
 def sec(timeout: int | float) -> int | float:
@@ -535,7 +535,7 @@ async def save_traffic_screenshot(
         str(target_time).replace(":", "-") if target_time is not None else "no_time"
     )
 
-    os.makedirs(TRAFFIC_SCREENSHOTS_PATH, exist_ok=True)
+    # os.makedirs(TRAFFIC_SCREENSHOTS_PATH, exist_ok=True)
     screenshot_path = os.path.join(
         TRAFFIC_SCREENSHOTS_PATH,
         f"traffic_{lat}_{lng}_{safe_day_of_week}_{safe_target_time}.png",
@@ -556,6 +556,7 @@ async def select_typical_mode(page: Page) -> bool:
         await page.get_by_role("menuitemradio", name="Typical traffic").click()
         # await page.wait_for_timeout(sec(1))
         logger.info("Typical traffic mode selected")
+        # await page.wait_for_timeout(sec(2))
         return True
     except Exception as err:
         logger.info(f"Failed to select the traffic typical mode: {err}")
@@ -572,7 +573,7 @@ async def select_typical_mode_day(page: Page, day_of_week: str):
             if (days[{day_index}]) days[{day_index}].click();
             """
         )
-        # await page.wait_for_timeout(sec(1))
+        # await page.wait_for_timeout(sec(2))
         logger.info("Successfully selection day for Typical mode")
     except Exception as err:
         logger.warning(f"Failed to select the traffic day of week: {err}")
@@ -611,7 +612,7 @@ async def select_typical_mode_time(page: Page, target_time: str):
         # Click on the target position on the slider track
         await page.mouse.click(target_x, track_box["y"] + track_box["height"] / 2)
 
-        # await page.wait_for_timeout(sec(1))
+        # await page.wait_for_timeout(sec(2))
         logger.info("Successfully selection time for Typical mode")
     except Exception as err:
         logger.warning(f"Failed to adjust the traffic time: {err}")
@@ -656,11 +657,10 @@ async def capture_google_maps_screenshot(
         page = await context.new_page()
 
         map_url = google_map_url(lat, lng)
-        await page.goto(map_url, wait_until="domcontentloaded") # timeout=sec(10)
+        await page.goto(map_url, wait_until="domcontentloaded", timeout=sec(10))
         logger.info(f"Loading Google Maps URL: {map_url}")
 
-        # you don't need this in a fast network
-        # await page.wait_for_timeout(sec(5))
+        # await page.wait_for_timeout(sec(10))
 
         # Position the mouse in the center of the map first
         await page.mouse.move(
@@ -671,17 +671,22 @@ async def capture_google_maps_screenshot(
         for i in range(3):
             await page.mouse.wheel(0, 100 * (-1 if i == 0 else 1))
             await page.wait_for_timeout(500)
-        # await page.wait_for_timeout(sec(2))
 
         # Select traffic type (typical or live)
         try:
             if day_of_week is not None or target_time is not None:
                 await page.wait_for_timeout(sec(5))
                 if await select_typical_mode(page):
+                    # await page.wait_for_timeout(sec(10))
+
                     if day_of_week is not None:
                         await select_typical_mode_day(page, day_of_week)
+                        # await page.wait_for_timeout(sec(10))
+
                     if target_time is not None:
                         await select_typical_mode_time(page, target_time)
+                        # await page.wait_for_timeout(sec(10))
+
                     live_traffic = False
         except Exception as traffic_error:
             logger.info(f"Using live traffic mode: {traffic_error}")
@@ -821,9 +826,6 @@ async def accept_cookies(page: Page) -> bool:
         for selector in selectors:
             try:
                 await page.get_by_role("button", name=selector).click(timeout=sec(5))
-                # await page.locator(selector).click(timeout=sec(5))
-                # await page.wait_for_selector(selector, timeout=sec(5))
-                # await page.click(selector)
                 await page.wait_for_timeout(sec(5))
                 return True
             except Exception:
@@ -839,15 +841,15 @@ async def setup_context_with_cookies(browser: BrowserContext) -> BrowserContext:
     context = await browser.new_context(
         locale="en-US",
         viewport=ViewportSize(width=1200, height=800),
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        user_agent=USER_AGENT,
     )
 
     try:
         # Create a temporary page to accept cookies once for this context
         setup_page = await context.new_page()
         await setup_page.goto(
-            google_map_url(0, 0, zoom=0), wait_until="domcontentloaded"
-        )  # timeout=sec(10)
+            google_map_url(0, 0, zoom=0), wait_until="domcontentloaded", timeout=sec(10)
+        )
         await accept_cookies(setup_page)
         logger.info("Cookie banner accepted")
     except Exception:
