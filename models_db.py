@@ -1,7 +1,16 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
-from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+)
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -44,6 +53,7 @@ class Job(Base):
     request_id = Column(String, unique=True, index=True, nullable=False)
     locations_count = Column(Integer, nullable=False)
     completed = Column(Integer, nullable=False, default=0)
+    saved_to_static = Column(Boolean, nullable=False, default=False)
     error = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
