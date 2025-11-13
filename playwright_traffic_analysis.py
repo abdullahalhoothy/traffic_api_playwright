@@ -814,10 +814,10 @@ async def accept_cookies(page: Page) -> bool:
 
         for selector in selectors:
             try:
-                await page.locator(selector).click(timeout=sec(3))
+                await page.locator(selector).click(timeout=sec(5))
                 # await page.wait_for_selector(selector, timeout=sec(5))
                 # await page.click(selector)
-                # await page.wait_for_timeout(sec(2))
+                await page.wait_for_timeout(sec(5))
                 return True
             except Exception:
                 continue
