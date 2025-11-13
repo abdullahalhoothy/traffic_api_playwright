@@ -586,9 +586,9 @@ async def select_typical_mode_time(page: Page, target_time: str):
             pos = TIME_MAP.get(clean_time, 19)  # default at 9:00 AM
 
         # Wait for the slider container to be available
-        await page.wait_for_selector(
-            'div[jsaction="layer.timeClicked"]', timeout=sec(5)
-        )
+        # await page.wait_for_selector(
+        #     'div[jsaction="layer.timeClicked"]', timeout=sec(5)
+        # )
 
         # Get the slider element using the more specific selector
         slider = await page.query_selector(
@@ -676,6 +676,7 @@ async def capture_google_maps_screenshot(
         # Select traffic type (typical or live)
         try:
             if day_of_week is not None or target_time is not None:
+                await page.wait_for_timeout(sec(5))
                 if await select_typical_mode(page):
                     if day_of_week is not None:
                         await select_typical_mode_day(page, day_of_week)
