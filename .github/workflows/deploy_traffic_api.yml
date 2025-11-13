@@ -140,6 +140,10 @@ jobs:
             ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
             RATE_LIMIT=${{ secrets.RATE_LIMIT || '10/minute' }}
             ALLOWED_HOSTS=${{ secrets.ALLOWED_HOSTS || '0.0.0.0,127.0.0.1,localhost' }}
+            PLAYWRIGHT_PROXY_SERVER=${{ secrets.PLAYWRIGHT_PROXY_SERVER }}
+            PLAYWRIGHT_PROXY_BYPASS=${{ secrets.PLAYWRIGHT_PROXY_BYPASS }}
+            PLAYWRIGHT_PROXY_USERNAME=${{ secrets.PLAYWRIGHT_PROXY_USERNAME }}
+            PLAYWRIGHT_PROXY_PASSWORD=${{ secrets.PLAYWRIGHT_PROXY_PASSWORD }}
             ENDFILE
             
             echo "✅ Created/updated .env file"
