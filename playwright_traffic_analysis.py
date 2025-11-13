@@ -656,29 +656,13 @@ async def capture_google_maps_screenshot(
         page = await context.new_page()
 
         map_url = google_map_url(lat, lng)
-        await page.goto(map_url, wait_until="domcontentloaded", timeout=sec(10))
+        await page.goto(map_url, wait_until="domcontentloaded") # timeout=sec(10)
         logger.info(f"Loading Google Maps URL: {map_url}")
 
-        # Select traffic type (typical or live)
+        # you don't need this in a fast network
         # await page.wait_for_timeout(sec(5))
-        try:
-            if day_of_week is not None or target_time is not None:
-                if await select_typical_mode(page):
-                    await page.wait_for_timeout(sec(10))
 
-                    if day_of_week is not None:
-                        await select_typical_mode_day(page, day_of_week)
-                        await page.wait_for_timeout(sec(10))
-
-                    if target_time is not None:
-                        await select_typical_mode_time(page, target_time)
-                        await page.wait_for_timeout(sec(10))
-
-                    live_traffic = False
-        except Exception as traffic_error:
-            logger.info(f"Using live traffic mode: {traffic_error}")
-
-        # Position mouse in the center of the map first
+        # Position the mouse in the center of the map first
         await page.mouse.move(
             page.viewport_size.get("width", 600) // 2,
             page.viewport_size.get("height", 400) // 2,
@@ -688,6 +672,18 @@ async def capture_google_maps_screenshot(
             await page.mouse.wheel(0, 100 * (-1 if i == 0 else 1))
             await page.wait_for_timeout(500)
         # await page.wait_for_timeout(sec(2))
+
+        # Select traffic type (typical or live)
+        try:
+            if day_of_week is not None or target_time is not None:
+                if await select_typical_mode(page):
+                    if day_of_week is not None:
+                        await select_typical_mode_day(page, day_of_week)
+                    if target_time is not None:
+                        await select_typical_mode_time(page, target_time)
+                    live_traffic = False
+        except Exception as traffic_error:
+            logger.info(f"Using live traffic mode: {traffic_error}")
 
         await cleaning_up_unimportant_elements(page)
 
