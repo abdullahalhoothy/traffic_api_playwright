@@ -26,6 +26,7 @@ from sqlalchemy.util import md5_hex
 from auth import authenticate_user, create_access_token, get_current_user
 from config import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
+    CONCURRENT_TABS,
     PROXY_BYPASS,
     PROXY_PASSWORD,
     PROXY_SERVER,
@@ -184,9 +185,6 @@ app.add_exception_handler(
 # static directory
 os.makedirs("static/images/traffic_screenshots", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Add semaphore to control concurrent browser tabs
-CONCURRENT_TABS = 5  # Adjust based on your server capacity
 
 
 async def process_single_location_with_semaphore(
