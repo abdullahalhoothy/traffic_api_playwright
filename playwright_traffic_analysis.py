@@ -328,8 +328,7 @@ def analyze_traffic_in_image(
     """Analyze traffic colors in the screenshot image with circular storefront detection"""
     try:
         # Load the image
-        image = Image.open(image_path)
-        image_array = np.array(image)
+        image_array = np.array(Image.open(image_path))
 
         height, width = image_array.shape[:2]
         center_x, center_y = width // 2, height // 2
@@ -626,7 +625,7 @@ async def select_typical_mode_time(page: Page, target_time: str):
 
 async def cleaning_up_unimportant_elements(page: Page):
     try:
-        # await page.evaluate(
+        await page.evaluate(
             # """
             # const elementsToRemove = [
             #     document.getElementById('assistive-chips'),
@@ -643,22 +642,22 @@ async def cleaning_up_unimportant_elements(page: Page):
             #     if (el) el.remove();
             # });
             # """
-            # """
-            # // Remove only the most obstructive elements
-            # const selectors = [
-            #     '#assistive-chips',
-            #     '#omnibox-container',
-            #     '#vasquette',
-            #     '.app-viewcard-strip',
-            #     '.scene-footer-container',
-            #     '.XltNde'
-            # ];
-            # selectors.forEach(sel => {
-            #     const el = document.querySelector(sel);
-            #     if (el) el.remove();
-            # });
-            # """
-        # )
+            """
+        // Remove only the most obstructive elements
+        const selectors = [
+            '#assistive-chips',
+            '#omnibox-container',
+            '#vasquette',
+            '.app-viewcard-strip',
+            '.scene-footer-container',
+            '.XltNde'
+        ];
+        selectors.forEach(sel => {
+            const el = document.querySelector(sel);
+            if (el) el.remove();
+        });
+        """
+        )
         logger.info("Successfully cleaned up UI elements")
     except Exception as cleanup_error:
         logger.warning(f"Failed to clean up UI elements: {cleanup_error}")
