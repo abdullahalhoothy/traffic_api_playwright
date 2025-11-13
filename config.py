@@ -24,7 +24,7 @@ PROXY_USERNAME = os.getenv("PLAYWRIGHT_PROXY_USERNAME")
 PROXY_PASSWORD = os.getenv("PLAYWRIGHT_PROXY_PASSWORD")
 
 # Add semaphore to control concurrent browser tabs
-CONCURRENT_TABS = 5  # Adjust based on your server capacity
+CONCURRENT_TABS = 3  # Adjust based on your server capacity
 
 # # Configure in config.py
 logging.basicConfig(
