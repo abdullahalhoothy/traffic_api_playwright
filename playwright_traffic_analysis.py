@@ -806,15 +806,19 @@ async def accept_cookies(page: Page) -> bool:
     try:
         # Try multiple possible cookie button selectors
         selectors = (
-            'button:has-text("Accept all")',
-            'button:has-text("I agree")',
-            'button:has-text("Accept")',
-            '[aria-label*="Accept"], [aria-label*="accept"]',
+            # 'button:has-text("Accept all")',
+            # 'button:has-text("I agree")',
+            # 'button:has-text("Accept")',
+            # '[aria-label*="Accept"], [aria-label*="accept"]',
+            "Accept all",
+            "I agree",
+            "Accept",
         )
 
         for selector in selectors:
             try:
-                await page.locator(selector).click(timeout=sec(5))
+                await page.get_by_role("button", name=selector).click(timeout=sec(5))
+                # await page.locator(selector).click(timeout=sec(5))
                 # await page.wait_for_selector(selector, timeout=sec(5))
                 # await page.click(selector)
                 await page.wait_for_timeout(sec(5))
