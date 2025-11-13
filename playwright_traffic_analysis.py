@@ -552,9 +552,9 @@ async def save_traffic_screenshot(
 async def select_typical_mode(page: Page) -> bool:
     try:
         await page.get_by_role("button", name="Live traffic").click()
-        # await page.wait_for_timeout(sec(1))
+        await page.wait_for_timeout(sec(1))
         await page.get_by_role("menuitemradio", name="Typical traffic").click()
-        # await page.wait_for_timeout(sec(1))
+        await page.wait_for_timeout(sec(1))
         logger.info("Typical traffic mode selected")
         # await page.wait_for_timeout(sec(2))
         return True
@@ -569,7 +569,7 @@ async def select_typical_mode_day(page: Page, day_of_week: str):
         day_index = DAY_MAP.get(str(day_of_week).strip().lower(), 0)
         await page.evaluate(
             f"""
-            const days = document.querySelectorAll('#layer div div div button');
+            const days = document.querySelectorAll('#layer button'); // div div div 
             if (days[{day_index}]) days[{day_index}].click();
             """
         )
@@ -586,31 +586,37 @@ async def select_typical_mode_time(page: Page, target_time: str):
             clean_time = re.sub(r":00(?=[AP]M)", "", target_time)
             pos = TIME_MAP.get(clean_time, 19)  # default at 9:00 AM
 
-        # Wait for the slider container to be available
-        await page.wait_for_selector(
-            'div[jsaction="layer.timeClicked"]', timeout=sec(5)
-        )
-
-        # Get the slider element using the more specific selector
-        slider = await page.query_selector(
-            'div[jsaction="layer.timeClicked"] span[role="slider"]'
-        )
-
-        if not slider:
-            # Alternative selector if the first one doesn't work
-            slider = await page.query_selector('span.BG6pXb[role="slider"]')
-
-        # Get the slider track (parent container) to calculate relative positions
         slider_track = await page.query_selector('div[jsaction="layer.timeClicked"]')
-        track_box = await slider_track.bounding_box()
+        if slider_track:
+            track_box = await slider_track.bounding_box()
+            target_x = track_box["x"] + (pos / 100) * track_box["width"]
+            await page.mouse.click(target_x, track_box["y"] + track_box["height"] / 2)
 
-        # Calculate the target X position based on percentage
-        # The slider moves within the track width
-        track_width = track_box["width"]
-        target_x = track_box["x"] + (pos / 100) * track_width
+        # # Wait for the slider container to be available
+        # await page.wait_for_selector(
+        #     'div[jsaction="layer.timeClicked"]', timeout=sec(5)
+        # )
 
-        # Click on the target position on the slider track
-        await page.mouse.click(target_x, track_box["y"] + track_box["height"] / 2)
+        # # Get the slider element using the more specific selector
+        # slider = await page.query_selector(
+        #     'div[jsaction="layer.timeClicked"] span[role="slider"]'
+        # )
+
+        # if not slider:
+        #     # Alternative selector if the first one doesn't work
+        #     slider = await page.query_selector('span.BG6pXb[role="slider"]')
+
+        # # Get the slider track (parent container) to calculate relative positions
+        # slider_track = await page.query_selector('div[jsaction="layer.timeClicked"]')
+        # track_box = await slider_track.bounding_box()
+
+        # # Calculate the target X position based on percentage
+        # # The slider moves within the track width
+        # track_width = track_box["width"]
+        # target_x = track_box["x"] + (pos / 100) * track_width
+
+        # # Click on the target position on the slider track
+        # await page.mouse.click(target_x, track_box["y"] + track_box["height"] / 2)
 
         # await page.wait_for_timeout(sec(2))
         logger.info("Successfully selection time for Typical mode")
@@ -621,19 +627,33 @@ async def select_typical_mode_time(page: Page, target_time: str):
 async def cleaning_up_unimportant_elements(page: Page):
     try:
         await page.evaluate(
+            # """
+            # const elementsToRemove = [
+            #     document.getElementById('assistive-chips'),
+            #     document.getElementById('omnibox-container'),
+            #     document.getElementById('vasquette'),
+            #     document.querySelector("#QA0Szd > div > div"),
+            #     document.querySelector("#content-container > div.app-viewcard-strip.ZiieLd > div.app-bottom-content-anchor.HdXONd > div.app-vertical-widget-holder.Hk4XGb"),
+            #     document.querySelector("#content-container > div.app-viewcard-strip.ZiieLd > div.app-bottom-content-anchor.HdXONd > div.app-horizontal-widget-holder.Hk4XGb"),
+            #     document.querySelector("#content-container > div.scene-footer-container.Hk4XGb"),
+            #     document.querySelector("#minimap > div > div"),
+            #     // document.getElementById('layer') // to remove (traffic type selection dialog)
+            # ];
+            # elementsToRemove.forEach(el => {
+            #     if (el) el.remove();
+            # });
+            # """
             """
-            const elementsToRemove = [
-                document.getElementById('assistive-chips'),
-                document.getElementById('omnibox-container'), 
-                document.getElementById('vasquette'),
-                document.querySelector("#QA0Szd > div > div"),
-                document.querySelector("#content-container > div.app-viewcard-strip.ZiieLd > div.app-bottom-content-anchor.HdXONd > div.app-vertical-widget-holder.Hk4XGb"),
-                document.querySelector("#content-container > div.app-viewcard-strip.ZiieLd > div.app-bottom-content-anchor.HdXONd > div.app-horizontal-widget-holder.Hk4XGb"),
-                document.querySelector("#content-container > div.scene-footer-container.Hk4XGb"),
-                document.querySelector("#minimap > div > div"),
-                // document.getElementById('layer') // to remove (traffic type selection dialog)
+            // Remove only the most obstructive elements
+            const selectors = [
+                '#assistive-chips',
+                '#omnibox-container', 
+                '#vasquette',
+                '.app-viewcard-strip',
+                '.scene-footer-container'
             ];
-            elementsToRemove.forEach(el => {
+            selectors.forEach(sel => {
+                const el = document.querySelector(sel);
                 if (el) el.remove();
             });
             """
@@ -675,7 +695,7 @@ async def capture_google_maps_screenshot(
         # Select traffic type (typical or live)
         try:
             if day_of_week is not None or target_time is not None:
-                # await page.wait_for_timeout(sec(5))
+                await page.wait_for_timeout(sec(5))
                 if await select_typical_mode(page):
                     # await page.wait_for_timeout(sec(10))
 
