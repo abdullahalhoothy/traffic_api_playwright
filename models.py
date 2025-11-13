@@ -3,7 +3,7 @@
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Token(BaseModel):
@@ -11,17 +11,49 @@ class Token(BaseModel):
     token_type: str
 
 
+class LocationData(BaseModel):
+    lat: float = Field(..., ge=-90, le=90, description="Latitude between -90 and 90")
+    lng: float = Field(
+        ..., ge=-180, le=180, description="Longitude between -180 and 180"
+    )
+    storefront_direction: str = Field(
+        default="north", description="Direction the storefront faces"
+    )
+    day: Optional[str] = Field(
+        default=None, description="Day of week (e.g., Monday, Tuesday)"
+    )
+    time: Optional[str] = Field(
+        default=None, description="Time in format like 10PM, 8:30AM"
+    )
+
+
 class LocationRequest(BaseModel):
-    lat: float
-    lng: float
-    storefront_direction: str = "north"
-    day: Optional[str] = None
-    time: Optional[str] = None
+    save_to_static: bool = Field(
+        default=False, description="Save screenshot to static path"
+    )
+    save_to_db: bool = Field(default=False, description="Save results to database")
+    location: LocationData = Field(..., description="Location data for analysis")
 
 
 class LocationResponse(BaseModel):
     request_id: str
     result: Dict[str, Any]
+    saved_to_db: bool = Field(
+        default=False, description="Whether result was saved to database"
+    )
+    saved_to_static: bool = Field(
+        default=False, description="Whether screenshot was saved to static files"
+    )
+
+
+class MultiLocationRequest(BaseModel):
+    save_to_static: bool = Field(
+        default=False, description="Save screenshots to static path"
+    )
+    save_to_db: bool = Field(default=False, description="Save results to database")
+    locations: List[LocationData] = Field(
+        ..., min_items=1, max_items=20, description="List of locations to analyze"
+    )
 
 
 class MultiLocationResponse(BaseModel):
@@ -29,9 +61,10 @@ class MultiLocationResponse(BaseModel):
     locations_count: int
     completed: int
     result: List[Dict[str, Any]]
+    saved_to_db: bool = Field(
+        default=False, description="Whether results were saved to database"
+    )
+    saved_to_static: bool = Field(
+        default=False, description="Whether screenshots were saved to static files"
+    )
     error: Optional[str] = None
-
-
-class MultiLocationRequest(BaseModel):
-    locations: List[LocationRequest]
-    proxy: Optional[str] = None
