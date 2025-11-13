@@ -1,0 +1,22 @@
+sqlalchemy
+sqlalchemy[asyncio]
+uvicorn[standard]
+python-jose[cryptography]
+fastapi
+slowapi
+pillow
+numpy
+aiosqlite
+pytest
+pytest-asyncio
+pytest-mock
+python-dotenv
+python-multipart
+httpx
+playwright
+# passlib[bcrypt]
+# tenacity
+# httpx
+# alembic
+# websockets
+# async-timeout

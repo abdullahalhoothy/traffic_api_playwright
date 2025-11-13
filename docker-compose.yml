@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    container_name: traffic_api
+    ports:
+      - "8000:8000"
+    environment:
+      - SQLITE_DB_FILE=/app/data/traffic.db
+      - JWT_SECRET=${JWT_SECRET:-jwt_secret}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-123456}
+      - RATE_LIMIT=${RATE_LIMIT:-10/minute}
+      - PLAYWRIGHT_PROXY=${PLAYWRIGHT_PROXY:-}
+    volumes:
+      - .:/app
+      - ./static:/app/static
+      - ./data:/app/data
