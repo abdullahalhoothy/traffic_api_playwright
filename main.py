@@ -34,6 +34,7 @@ from config import (
 )
 from db import Base, engine, get_db
 from models import (
+    LocationData,
     LocationRequest,
     LocationResponse,
     MultiLocationRequest,
@@ -67,39 +68,101 @@ async def lifespan(app: FastAPI):
             await db.commit()
         break
 
+    # Initialize browser resources
+    playwright_instance = None
+    browser_instance = None
+    browser_context_instance = None
+
     try:
-        playwright = await async_playwright().start()
-        browser = await playwright.chromium.launch(
-            headless=True,
-            chromium_sandbox=False,
-            proxy=(
-                ProxySettings(
-                    server=PROXY_SERVER,
-                    bypass=PROXY_BYPASS,
-                    username=PROXY_USERNAME,
-                    password=PROXY_PASSWORD,
-                )
-                if PROXY_SERVER
-                else None
-            ),
+        playwright_instance = await async_playwright().start()
+        proxy_settings = (
+            ProxySettings(
+                server=PROXY_SERVER,
+                bypass=PROXY_BYPASS,
+                username=PROXY_USERNAME,
+                password=PROXY_PASSWORD,
+            )
+            if PROXY_SERVER
+            else None
         )
 
-        context = await setup_context_with_cookies(browser)
+        # Launch browser with proper error handling
+        browser_instance = await playwright_instance.chromium.launch(
+            headless=True,
+            chromium_sandbox=False,
+            proxy=proxy_settings,
+        )
 
-        app.state.browser_context = context
+        browser_context_instance = await setup_context_with_cookies(browser_instance)
+
+        # Store resources in app state
+        app.state.browser_context = browser_context_instance
+        app.state.playwright = playwright_instance
+        app.state.browser = browser_instance
+
+        logger.info("✅ Browser resources initialized successfully")
+
     except Exception as e:
-        raise
+        logger.error(f"❌ Failed to initialize browser: {e}")
+        # Clean up partially initialized resources
+        if browser_context_instance:
+            try:
+                await browser_context_instance.close()
+            except Exception:
+                pass
+        if browser_instance:
+            try:
+                await browser_instance.close()
+            except Exception:
+                pass
+        if playwright_instance:
+            try:
+                await playwright_instance.stop()
+            except Exception:
+                pass
+
+        app.state.browser_context = None
+        app.state.playwright = None
+        app.state.browser = None
 
     yield
 
-    # Cleanup
-    try:
-        await context.close()
-    except:
-        pass
-    await browser.close()
-    await playwright.stop()
-    logger.info("✅ Cleanup completed")
+    # Cleanup with proper error handling
+    logger.info("🔄 Starting cleanup process...")
+
+    cleanup_errors = []
+
+    # Cleanup browser context
+    if hasattr(app.state, "browser_context") and app.state.browser_context:
+        try:
+            await app.state.browser_context.close()
+            logger.info("✅ Browser context closed")
+        except Exception as e:
+            cleanup_errors.append(f"Browser context: {e}")
+            logger.warning(f"⚠️ Failed to close browser context: {e}")
+
+    # Cleanup browser
+    if hasattr(app.state, "browser") and app.state.browser:
+        try:
+            await app.state.browser.close()
+            logger.info("✅ Browser closed")
+        except Exception as e:
+            cleanup_errors.append(f"Browser: {e}")
+            logger.warning(f"⚠️ Failed to close browser: {e}")
+
+    # Cleanup playwright
+    if hasattr(app.state, "playwright") and app.state.playwright:
+        try:
+            await app.state.playwright.stop()
+            logger.info("✅ Playwright stopped")
+        except Exception as e:
+            cleanup_errors.append(f"Playwright: {e}")
+            logger.warning(f"⚠️ Failed to stop playwright: {e}")
+
+    if cleanup_errors:
+        logger.warning(f"❌ Cleanup completed with errors: {cleanup_errors}")
+    else:
+        logger.info("✅ Cleanup completed successfully")
 
 
 app = FastAPI(title="Google Maps Traffic Analyzer API", lifespan=lifespan)
@@ -118,19 +181,19 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 async def process_single_location(
-    browser_context, loc: LocationRequest, base_url: str
+    browser_context, location: LocationData, base_url: str, save_to_static: bool = False
 ) -> dict[str, Any]:
     traffic_results = await analyze_location_traffic(
         browser_context,
-        loc.lat,
-        loc.lng,
-        loc.day,
-        loc.time,
-        loc.storefront_direction,
-        save_to_static=True,
+        location.lat,
+        location.lng,
+        location.day,
+        location.time,
+        location.storefront_direction,
+        save_to_static=save_to_static,
         request_base_url=base_url,
     )
-    return {"payload": loc, "result": traffic_results}
+    return {"location": loc, "result": traffic_results}
 
 
 # Global exception handler
@@ -184,18 +247,10 @@ async def process_locations(
     try:
         results = await asyncio.gather(
             *(
-                # analyze_location_traffic(
-                #     browser_context,
-                #     loc.lat,
-                #     loc.lng,
-                #     loc.day,
-                #     loc.time,
-                #     loc.storefront_direction,
-                #     save_to_static=True,
-                #     request_base_url=request.base_url,
-                # )
-                process_single_location(browser_context, loc, request.base_url)
-                for loc in payload.locations
+                process_single_location(
+                    browser_context, location, request.base_url, payload.save_to_static
+                )
+                for location in payload.locations
             ),
             return_exceptions=True,
         )
@@ -204,44 +259,48 @@ async def process_locations(
         ]
         response = MultiLocationResponse(
             request_id=uuid.uuid4().hex,
-            locations_count=len(payload.locatioins),
+            locations_count=len(payload.locations),
             completed=len(completed_result),
             result=completed_result,
+            saved_to_db=payload.save_to_db,
+            saved_to_static=payload.save_to_static,
             error="\n".join(str(r) for r in results if isinstance(r, Exception)),
         )
 
-        # save result to DB
-        try:
-            job = Job(
-                uuid=response.request_id,
-                locations_count=response.locations_count,
-                completed=response.completed,
-                user_id=user.id,
-            )
-            db.add(job)
-
-            for res in results:
-                if isinstance(res, Exception):
-                    continue
-
-                log = TrafficLog(
-                    lat=res["payload"].get("lat"),
-                    lng=res["payload"].get("lng"),
-                    storefront_direction=res["storefront_direction"].get(
-                        "storefront_direction"
-                    ),
-                    day=res["payload"].get("day"),
-                    time=res["payload"].get("time"),
-                    result=res["result"],
-                    job_id=response.request_id,
+        # Save result to DB if requested
+        if payload.save_to_db:
+            try:
+                job = Job(
+                    request_id=response.request_id,
+                    locations_count=response.locations_count,
+                    completed=response.completed,
+                    saved_to_static=payload.save_to_static,
+                    user_id=user.id,
                 )
-                db.add(log)
+                db.add(job)
 
-            await db.commit()
-        except Exception as e:
-            logger.warning(
-                f"DB: failed to create process request {response.request_id}: {e}"
-            )
+                for res in results:
+                    if isinstance(res, Exception):
+                        continue
+
+                    log = TrafficLog(
+                        lat=res["location"].get("lat"),
+                        lng=res["location"].get("lng"),
+                        storefront_direction=res["location"].get(
+                            "storefront_direction"
+                        ),
+                        day=res["location"].get("day"),
+                        time=res["location"].get("time"),
+                        result=res["result"],
+                        job_id=response.request_id,
+                    )
+                    db.add(log)
+
+                await db.commit()
+            except Exception as e:
+                logger.warning(
+                    f"DB: failed to create process request {response.request_id}: {e}"
+                )
 
         return response
     except Exception as e:
@@ -253,7 +312,7 @@ async def process_locations(
 # @app.get("/fetch-point", response_model=LocationResponse)
 async def get_job(
     request: Request,
-    payload: LocationRequest,
+    payload: LocationData,
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -271,9 +330,14 @@ async def get_job(
                 TrafficLog.time == payload.time,
             )
         )
+        saved_to_static = await db.execute(select(Job).filter(Job.user_id == user.id))
+        saved_to_static = saved_to_static.scalar_one().saved_to_static
         request_record = result.scalar_one_or_none()
         return LocationResponse(
-            request_id=request_record.job_id, result=request_record.result
+            request_id=request_record.job_id,
+            result=request_record.result,
+            saved_to_db=True,
+            saved_to_static=saved_to_static,
         )
     except Exception as e:
         logger.warning(
@@ -296,41 +360,46 @@ async def get_job(
 
     try:
         result = await process_single_location(
-            browser_context, payload, request.base_url
+            browser_context, payload.location, request.base_url, payload.save_to_static
         )
 
         response = LocationResponse(
-            request_id=uuid.uuid4().hex, result=result["result"]
+            request_id=uuid.uuid4().hex,
+            result=result["result"],
+            saved_to_db=payload.save_to_db,
+            saved_to_static=payload.save_to_static,
         )
 
-        # save result to DB
-        try:
-            job = Job(
-                uuid=response.request_id,
-                locations_count=1,
-                completed=1,
-                user_id=user.id,
-            )
-            db.add(job)
+        # Save result to DB if requested
+        if payload.save_to_db:
+            try:
+                job = Job(
+                    request_id=response.request_id,
+                    locations_count=1,
+                    completed=1,
+                    saved_to_static=payload.save_to_static,
+                    user_id=user.id,
+                )
+                db.add(job)
 
-            log = TrafficLog(
-                lat=result["payload"].get("lat"),
-                lng=result["payload"].get("lng"),
-                storefront_direction=result["storefront_direction"].get(
-                    "storefront_direction"
-                ),
-                day=result["payload"].get("day"),
-                time=result["payload"].get("time"),
-                result=result["result"],
-                job_id=response.request_id,
-            )
-            db.add(log)
+                log = TrafficLog(
+                    lat=result["payload"].get("lat"),
+                    lng=result["payload"].get("lng"),
+                    storefront_direction=result["storefront_direction"].get(
+                        "storefront_direction"
+                    ),
+                    day=result["payload"].get("day"),
+                    time=result["payload"].get("time"),
+                    result=result["result"],
+                    job_id=response.request_id,
+                )
+                db.add(log)
 
-            await db.commit()
-        except Exception as e:
-            logger.warning(
-                f"DB: failed to create process request {response.request_id}: {e}"
-            )
+                await db.commit()
+            except Exception as e:
+                logger.warning(
+                    f"DB: failed to create process request {response.request_id}: {e}"
+                )
 
         return response
     except Exception as e:
