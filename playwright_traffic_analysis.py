@@ -533,7 +533,6 @@ async def save_traffic_screenshot(
         str(target_time).replace(":", "-") if target_time is not None else "no_time"
     )
 
-    # os.makedirs(TRAFFIC_SCREENSHOTS_PATH, exist_ok=True)
     screenshot_path = os.path.join(
         TRAFFIC_SCREENSHOTS_PATH,
         f"traffic_{lat}_{lng}_{safe_day_of_week}_{safe_target_time}.png",
@@ -557,27 +556,26 @@ async def select_typical_mode(page: Page) -> bool:
         # await page.wait_for_timeout(sec(2))
         return True
     except Exception as err:
-        logger.info(f"Failed to select the traffic typical mode: {err}")
+        logger.warning(f"Failed to select the traffic typical mode: {err}")
 
     return False
 
 
-async def select_typical_mode_day(page: Page, day_of_week: str):
+async def select_typical_mode_day(page: Page, day_of_week: str) -> None:
     try:
         day_index = DAY_MAP.get(str(day_of_week).strip().lower(), 0)
         await page.evaluate(
-            f"""
-            const days = document.querySelectorAll('#layer div div div button');
-            if (days[{day_index}]) days[{day_index}].click();
-            """
+            f"document.querySelectorAll('#layer div div div button')[{day_index}]?.click();"
         )
         # await page.wait_for_timeout(sec(2))
-        logger.info("Successfully selection day for Typical mode")
+        logger.info(
+            f"Successfully selected {day_of_week.capitalize()} for Typical mode"
+        )
     except Exception as err:
         logger.warning(f"Failed to select the traffic day of week: {err}")
 
 
-async def select_typical_mode_time(page: Page, target_time: str):
+async def select_typical_mode_time(page: Page, target_time: str) -> None:
     try:
         target_time = target_time.strip().upper()
         if re.fullmatch(r"(1[0-2]|[1-9])(?::[0-5]\d)?[AP]M", target_time):
@@ -591,12 +589,12 @@ async def select_typical_mode_time(page: Page, target_time: str):
             await page.mouse.click(target_x, track_box["y"] + track_box["height"] / 2)
 
         # await page.wait_for_timeout(sec(2))
-        logger.info("Successfully selection time for Typical mode")
+        logger.info(f"Successfully timed at {target_time} for Typical mode")
     except Exception as err:
         logger.warning(f"Failed to adjust the traffic time: {err}")
 
 
-async def cleaning_up_unimportant_elements(page: Page):
+async def cleaning_up_unimportant_elements(page: Page) -> None:
     try:
         await page.evaluate(
             """
@@ -626,6 +624,7 @@ async def capture_google_maps_screenshot(
     lng: float,
     day_of_week: Optional[Union[str, int]] = None,
     target_time: Optional[str] = None,
+    zoom: Optional[int] = 18,
 ) -> tuple[str, bool]:
 
     live_traffic = True
@@ -633,10 +632,9 @@ async def capture_google_maps_screenshot(
     try:
         page = await context.new_page()
 
-        map_url = google_map_url(lat, lng)
+        map_url = google_map_url(lat, lng, zoom=zoom if isinstance(zoom, int) else 18)
         await page.goto(map_url, wait_until="domcontentloaded", timeout=sec(10))
         logger.info(f"Loading Google Maps URL: {map_url}")
-
         # await page.wait_for_timeout(sec(10))
 
         # Position the mouse in the center of the map first
@@ -644,14 +642,15 @@ async def capture_google_maps_screenshot(
             page.viewport_size.get("width", 600) // 2,
             page.viewport_size.get("height", 400) // 2,
         )
+
         # Zoom operations to trigger data refresh
         for i in range(3):
             await page.mouse.wheel(0, 100 * (-1 if i == 0 else 1))
             await page.wait_for_timeout(500)
 
         # Select traffic type (typical or live)
-        try:
-            if day_of_week is not None or target_time is not None:
+        if day_of_week is not None or target_time is not None:
+            try:
                 # await page.wait_for_timeout(sec(5))
                 if await select_typical_mode(page):
                     if day_of_week is not None:
@@ -660,8 +659,8 @@ async def capture_google_maps_screenshot(
                         await select_typical_mode_time(page, target_time)
 
                     live_traffic = False
-        except Exception as traffic_error:
-            logger.info(f"Using live traffic mode: {traffic_error}")
+            except Exception as traffic_error:
+                logger.info(f"Using live traffic mode: {traffic_error}")
 
         # await cleaning_up_unimportant_elements(page)
 
@@ -680,13 +679,15 @@ async def analyze_location_traffic(
     context: BrowserContext,
     lat: float,
     lng: float,
-    day_of_week: Optional[Union[str, int]] = None,
+    day_of_week: Optional[str] = None,
     target_time: Optional[str] = None,
-    storefront_direction: str = "north",  # Reintroduced parameter
+    storefront_direction: str = "north",
+    zoom: Optional[int] = 18,
     *,
     save_to_static: bool = False,
-    request_base_url: str = None,
-):
+    request_base_url: Optional[str] = None,
+) -> dict[str, Any]:
+
     if not context:
         error_msg = f"Failed to setup Browser for location ({lat}, {lng})."
         logger.error(error_msg)
@@ -700,10 +701,11 @@ async def analyze_location_traffic(
             lng,
             day_of_week=day_of_week,
             target_time=target_time,
+            zoom=zoom,
         )
 
         if not screenshot_path:
-            error_msg = f"Failed to capture screenshot for location ({lat}, {lng}). Check Google Maps accessibility and browser automation."
+            error_msg = f"Failed to capture screenshot for location ({lat}, {lng})."
             logger.error(error_msg)
             raise Exception(error_msg)
 
@@ -773,6 +775,7 @@ async def analyze_location_traffic(
         logger.info(
             f"Google Maps traffic analysis completed for {lat}, {lng}: Score {result['score']}"
         )
+
         return result
 
     except Exception as err:
@@ -783,24 +786,21 @@ async def analyze_location_traffic(
 
 async def accept_cookies(page: Page) -> bool:
     """Accept cookies if present"""
-    try:
-        # Try multiple possible cookie button selectors
-        selectors = (
-            "Accept all",
-            "I agree",
-            "Accept",
-        )
+    # Try multiple possible cookie button selectors
+    selectors = (
+        "Accept all",
+        "I agree",
+        "Accept",
+    )
 
-        for selector in selectors:
-            try:
-                await page.get_by_role("button", name=selector).click()
-                await page.wait_for_timeout(sec(5))
-                return True
-            except Exception:
-                continue
-        return False
-    except Exception:
-        return False
+    for selector in selectors:
+        try:
+            await page.get_by_role("button", name=selector).click()
+            await page.wait_for_timeout(sec(5))
+            return True
+        except Exception:
+            continue
+    raise
 
 
 async def setup_context_with_cookies(browser: BrowserContext) -> BrowserContext:
