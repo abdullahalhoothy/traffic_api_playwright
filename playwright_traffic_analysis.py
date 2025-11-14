@@ -11,7 +11,7 @@ from collections import Counter
 from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 from playwright.async_api import BrowserContext, Page, ViewportSize
 
 from config import logger
@@ -136,7 +136,6 @@ def _add_directional_arrow(
     image: Image.Image, center_x: int, center_y: int, direction: str
 ):
     """Draw a pin with a directional cone pointing towards the storefront direction"""
-    from PIL import ImageDraw
 
     draw = ImageDraw.Draw(image)
 
@@ -591,32 +590,6 @@ async def select_typical_mode_time(page: Page, target_time: str):
             target_x = track_box["x"] + (pos / 100) * track_box["width"]
             await page.mouse.click(target_x, track_box["y"] + track_box["height"] / 2)
 
-        # # Wait for the slider container to be available
-        # await page.wait_for_selector(
-        #     'div[jsaction="layer.timeClicked"]', timeout=sec(5)
-        # )
-
-        # # Get the slider element using the more specific selector
-        # slider = await page.query_selector(
-        #     'div[jsaction="layer.timeClicked"] span[role="slider"]'
-        # )
-
-        # if not slider:
-        #     # Alternative selector if the first one doesn't work
-        #     slider = await page.query_selector('span.BG6pXb[role="slider"]')
-
-        # # Get the slider track (parent container) to calculate relative positions
-        # slider_track = await page.query_selector('div[jsaction="layer.timeClicked"]')
-        # track_box = await slider_track.bounding_box()
-
-        # # Calculate the target X position based on percentage
-        # # The slider moves within the track width
-        # track_width = track_box["width"]
-        # target_x = track_box["x"] + (pos / 100) * track_width
-
-        # # Click on the target position on the slider track
-        # await page.mouse.click(target_x, track_box["y"] + track_box["height"] / 2)
-
         # await page.wait_for_timeout(sec(2))
         logger.info("Successfully selection time for Typical mode")
     except Exception as err:
@@ -626,37 +599,21 @@ async def select_typical_mode_time(page: Page, target_time: str):
 async def cleaning_up_unimportant_elements(page: Page):
     try:
         await page.evaluate(
-            # """
-            # const elementsToRemove = [
-            #     document.getElementById('assistive-chips'),
-            #     document.getElementById('omnibox-container'),
-            #     document.getElementById('vasquette'),
-            #     document.querySelector("#QA0Szd > div > div"),
-            #     document.querySelector("#content-container > div.app-viewcard-strip.ZiieLd > div.app-bottom-content-anchor.HdXONd > div.app-vertical-widget-holder.Hk4XGb"),
-            #     document.querySelector("#content-container > div.app-viewcard-strip.ZiieLd > div.app-bottom-content-anchor.HdXONd > div.app-horizontal-widget-holder.Hk4XGb"),
-            #     document.querySelector("#content-container > div.scene-footer-container.Hk4XGb"),
-            #     document.querySelector("#minimap > div > div"),
-            #     // document.getElementById('layer') // to remove (traffic type selection dialog)
-            # ];
-            # elementsToRemove.forEach(el => {
-            #     if (el) el.remove();
-            # });
-            # """
             """
-        // Remove only the most obstructive elements
-        const selectors = [
-            '#assistive-chips',
-            '#omnibox-container',
-            '#vasquette',
-            '.app-viewcard-strip',
-            '.scene-footer-container',
-            '.XltNde'
-        ];
-        selectors.forEach(sel => {
-            const el = document.querySelector(sel);
-            if (el) el.remove();
-        });
-        """
+            // Remove only the most obstructive elements
+            const selectors = [
+                '#assistive-chips',
+                '#omnibox-container',
+                '#vasquette',
+                '.app-viewcard-strip',
+                '.scene-footer-container',
+                '.XltNde'
+            ];
+            selectors.forEach(sel => {
+                const el = document.querySelector(sel);
+                if (el) el.remove();
+            });
+            """
         )
         logger.info("Successfully cleaned up UI elements")
     except Exception as cleanup_error:
@@ -697,21 +654,16 @@ async def capture_google_maps_screenshot(
             if day_of_week is not None or target_time is not None:
                 # await page.wait_for_timeout(sec(5))
                 if await select_typical_mode(page):
-                    # await page.wait_for_timeout(sec(10))
-
                     if day_of_week is not None:
                         await select_typical_mode_day(page, day_of_week)
-                        # await page.wait_for_timeout(sec(10))
-
                     if target_time is not None:
                         await select_typical_mode_time(page, target_time)
-                        # await page.wait_for_timeout(sec(10))
 
                     live_traffic = False
         except Exception as traffic_error:
             logger.info(f"Using live traffic mode: {traffic_error}")
 
-        await cleaning_up_unimportant_elements(page)
+        # await cleaning_up_unimportant_elements(page)
 
         screenshot_path = await save_traffic_screenshot(
             page, lat, lng, day_of_week, target_time
@@ -834,10 +786,6 @@ async def accept_cookies(page: Page) -> bool:
     try:
         # Try multiple possible cookie button selectors
         selectors = (
-            # 'button:has-text("Accept all")',
-            # 'button:has-text("I agree")',
-            # 'button:has-text("Accept")',
-            # '[aria-label*="Accept"], [aria-label*="accept"]',
             "Accept all",
             "I agree",
             "Accept",
@@ -845,7 +793,7 @@ async def accept_cookies(page: Page) -> bool:
 
         for selector in selectors:
             try:
-                await page.get_by_role("button", name=selector).click(timeout=sec(5))
+                await page.get_by_role("button", name=selector).click()
                 await page.wait_for_timeout(sec(5))
                 return True
             except Exception:
