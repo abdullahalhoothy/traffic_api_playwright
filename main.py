@@ -206,6 +206,7 @@ async def process_single_location(
         location.day,
         location.time,
         location.storefront_direction,
+        location.zoom,
         save_to_static=save_to_static,
         request_base_url=base_url,
     )
@@ -338,43 +339,6 @@ async def process_locations(
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
 
-@app.get("/fetch-location", response_model=LocationResponse)
-# @app.get("/fetch-point", response_model=LocationResponse)
-async def get_job(
-    request: Request,
-    payload: LocationData,
-    user=Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-
-    try:
-        result = await db.execute(
-            select(TrafficLog)
-            .join(Job)
-            .filter(
-                Job.user_id == user.id,
-                TrafficLog.lat == payload.lat,
-                TrafficLog.lng == payload.lng,
-                TrafficLog.storefront_direction == payload.storefront_direction,
-                TrafficLog.day == payload.day,
-                TrafficLog.time == payload.time,
-            )
-        )
-        saved_to_static = await db.execute(select(Job).filter(Job.user_id == user.id))
-        saved_to_static = saved_to_static.scalar_one().saved_to_static
-        request_record = result.scalar_one_or_none()
-        return LocationResponse(
-            request_id=request_record.job_id,
-            result=request_record.result,
-            saved_to_db=True,
-            saved_to_static=saved_to_static,
-        )
-    except Exception as e:
-        logger.warning(
-            f"DB: Failed to get request record for {payload.lat}, {payload.lng}: {e}"
-        )
-
-
 @app.post("/process-location", response_model=LocationResponse)
 # @app.post("/process-point", response_model=LocationResponse)
 @limiter.limit(RATE)
@@ -433,6 +397,43 @@ async def get_job(
     except Exception as e:
         logger.error(f"Direct processing failed: {e}")
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+
+
+@app.get("/fetch-location", response_model=LocationResponse)
+# @app.get("/fetch-point", response_model=LocationResponse)
+async def get_job(
+    request: Request,
+    payload: LocationData,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+
+    try:
+        result = await db.execute(
+            select(TrafficLog)
+            .join(Job)
+            .filter(
+                Job.user_id == user.id,
+                TrafficLog.lat == payload.lat,
+                TrafficLog.lng == payload.lng,
+                TrafficLog.storefront_direction == payload.storefront_direction,
+                TrafficLog.day == payload.day,
+                TrafficLog.time == payload.time,
+            )
+        )
+        saved_to_static = await db.execute(select(Job).filter(Job.user_id == user.id))
+        saved_to_static = saved_to_static.scalar_one().saved_to_static
+        request_record = result.scalar_one_or_none()
+        return LocationResponse(
+            request_id=request_record.job_id,
+            result=request_record.result,
+            saved_to_db=True,
+            saved_to_static=saved_to_static,
+        )
+    except Exception as e:
+        logger.warning(
+            f"DB: Failed to get request record for {payload.lat}, {payload.lng}: {e}"
+        )
 
 
 @app.get("/health", tags=["Health"])
