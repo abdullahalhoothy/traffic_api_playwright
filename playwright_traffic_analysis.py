@@ -568,7 +568,7 @@ async def select_typical_mode_day(page: Page, day_of_week: str):
         day_index = DAY_MAP.get(str(day_of_week).strip().lower(), 0)
         await page.evaluate(
             f"""
-            const days = document.querySelectorAll('#layer button'); // div div div 
+            const days = document.querySelectorAll('#layer div div div button');
             if (days[{day_index}]) days[{day_index}].click();
             """
         )
