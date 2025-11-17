@@ -10,7 +10,7 @@ load_dotenv()
 
 SECRET_KEY = os.getenv("JWT_SECRET", "jwt_secret")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 RATE = os.getenv("RATE_LIMIT", "5/minute")
 
 # DataBase configuration
@@ -22,10 +22,6 @@ PROXY_SERVER = os.getenv("PLAYWRIGHT_PROXY_SERVER")
 PROXY_BYPASS = os.getenv("PLAYWRIGHT_PROXY_BYPASS")
 PROXY_USERNAME = os.getenv("PLAYWRIGHT_PROXY_USERNAME")
 PROXY_PASSWORD = os.getenv("PLAYWRIGHT_PROXY_PASSWORD")
-
-CONCURRENT_TABS = os.getenv(
-    "CONCURRENT_TABS", 5
-)  # Adjust based on your server capacity
 
 # Configure logger
 logging.basicConfig(

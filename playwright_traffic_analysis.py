@@ -2,14 +2,16 @@
 # -*- coding: utf-8 -*-
 
 
+import io
 import math
 import os
 import re
-import shutil
 import time
 from collections import Counter
+from contextlib import contextmanager
 from typing import Any, Dict, Optional, Tuple, Union
 
+import aiofiles
 import numpy as np
 from PIL import Image, ImageDraw
 from playwright.async_api import BrowserContext, Page, ViewportSize
@@ -60,9 +62,6 @@ DAY_MAP = {
 
 TIME_MAP = {"8:30AM": 16, "6PM": 75, "10PM": 99.9}
 
-TRAFFIC_SCREENSHOTS_PATH = os.path.join(
-    os.path.dirname(__file__), "traffic_screenshots"
-)
 TRAFFIC_SCREENSHOTS_STATIC_PATH = os.path.join(
     os.path.dirname(__file__),
     "static",
@@ -70,6 +69,14 @@ TRAFFIC_SCREENSHOTS_STATIC_PATH = os.path.join(
     "traffic_screenshots",
 )
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+
+
+@contextmanager
+def timer(operation_name: str):
+    start = time.time()
+    yield
+    duration = time.time() - start
+    logger.info(f"⏱️  {operation_name}: {duration:.2f}s")
 
 
 def sec(timeout: int | float) -> int | float:
@@ -93,7 +100,7 @@ def classify_traffic_color(rgb: Tuple[int, int, int]) -> str:
     return "gray"  # Default to gray if no range matches
 
 
-def add_pin_to_image(image_path: str, storefront_direction: str = "north") -> str:
+def add_pin_to_image(image: Image.Image, storefront_direction: str = "north") -> None:
     """Add a pin marker and directional cone to the center of the image for verification"""
     try:
 
@@ -101,7 +108,7 @@ def add_pin_to_image(image_path: str, storefront_direction: str = "north") -> st
         # time.sleep(0.2)
 
         # Load the image
-        image = Image.open(image_path)
+        # image = Image.open(io.BytesIO(image_path))
 
         # Get image center
         width, height = image.size
@@ -111,30 +118,30 @@ def add_pin_to_image(image_path: str, storefront_direction: str = "north") -> st
         _add_directional_arrow(image, center_x, center_y, storefront_direction)
 
         # Generate pinned image path
-        pinned_path = image_path.replace(".png", "_pinned.png")
+        # pinned_path = image_path.replace(".png", "_pinned.png")
 
         # Ensure we close the original image before saving
-        image_copy = image.copy()
-        image.close()
+        # image_copy = image.copy()
+        # image.close()
 
-        # Save the modified image
-        image_copy.save(pinned_path)
-        image_copy.close()
+        # # Save the modified image
+        # image_copy.save(pinned_path)
+        # image_copy.close()
 
         # Add a small delay to ensure the file is fully written
         # time.sleep(0.5)
 
-        logger.info(f"Pin and directional cone added to image: {pinned_path}")
-        return pinned_path
+        # logger.info(f"Pin and directional cone added to image: {pinned_path}")
+        # return pinned_path
 
     except Exception as e:
         logger.error(f"Failed to add pin to image: {e}")
-        return image_path  # Return original path if pin addition fails
+        # return image_path  # Return original path if pin addition fails
 
 
 def _add_directional_arrow(
     image: Image.Image, center_x: int, center_y: int, direction: str
-):
+) -> None:
     """Draw a pin with a directional cone pointing towards the storefront direction"""
 
     draw = ImageDraw.Draw(image)
@@ -240,6 +247,7 @@ def _analyze_annular_zone(
     # Update overall color distribution
     for color, count in Counter(zone_colors).items():
         traffic_analysis["color_distribution"][color] += count
+
     logger.info(
         f"Analyzed {zone_name} zone: Score={zone_score}, Pixels={pixels_in_zone}"
     )
@@ -319,7 +327,7 @@ def find_storefront_traffic(
 
 
 def analyze_traffic_in_image(
-    image_path: str,
+    image: Image.Image,  # str,
     center_lat: float,
     center_lng: float,
     storefront_direction: str = "north",
@@ -327,7 +335,7 @@ def analyze_traffic_in_image(
     """Analyze traffic colors in the screenshot image with circular storefront detection"""
     try:
         # Load the image
-        image_array = np.array(Image.open(image_path))
+        image_array = np.array(image)  # np.array(Image.open(image_path))
 
         height, width = image_array.shape[:2]
         center_x, center_y = width // 2, height // 2
@@ -518,40 +526,25 @@ def calculate_final_traffic_score(analysis: Dict[str, Any]) -> Dict[str, Any]:
 # ------------------------ end image processing section ----------------------#
 
 
-async def save_traffic_screenshot(
+async def get_traffic_screenshot(
     page: Page,
-    lat: float,
-    lng: float,
-    day_of_week: Optional[str] = None,
-    target_time: Optional[str] = None,
-) -> str:
-
-    safe_day_of_week = (
-        str(day_of_week).replace(" ", "_") if day_of_week is not None else "no_day"
-    )
-    safe_target_time = (
-        str(target_time).replace(":", "-") if target_time is not None else "no_time"
-    )
-
-    screenshot_path = os.path.join(
-        TRAFFIC_SCREENSHOTS_PATH,
-        f"traffic_{lat}_{lng}_{safe_day_of_week}_{safe_target_time}.png",
-    )
-
+) -> bytes:
     try:
-        await page.screenshot(path=screenshot_path, type="png")
-        logger.info(f"Screenshot captured at 20m zoom level: {screenshot_path}")
-        return screenshot_path
+        screenshot_bytes = await page.screenshot(type="png")
+        logger.info(f"Screenshot captured at 20m zoom level.")
+        return screenshot_bytes
     except Exception as screenshot_error:
         raise Exception(f"Failed to capture screenshot: {screenshot_error}")
 
 
 async def select_typical_mode(page: Page) -> bool:
     try:
+        await page.wait_for_selector(".app-center-widget-holder", timeout=sec(100))
+
         await page.get_by_role("button", name="Live traffic").click()
-        await page.wait_for_timeout(sec(1))
+        # await page.wait_for_timeout(sec(1))
         await page.get_by_role("menuitemradio", name="Typical traffic").click()
-        await page.wait_for_timeout(sec(1))
+        # await page.wait_for_timeout(sec(1))
         logger.info("Typical traffic mode selected")
         # await page.wait_for_timeout(sec(2))
         return True
@@ -563,11 +556,14 @@ async def select_typical_mode(page: Page) -> bool:
 
 async def select_typical_mode_day(page: Page, day_of_week: str) -> None:
     try:
+        day_selector = "#layer div div div button"
+        await page.wait_for_selector(day_selector)
+
         day_index = DAY_MAP.get(str(day_of_week).strip().lower(), 0)
         await page.evaluate(
-            f"document.querySelectorAll('#layer div div div button')[{day_index}]?.click();"
+            f"document.querySelectorAll('{day_selector}')[{day_index}]?.click();"
         )
-        # await page.wait_for_timeout(sec(2))
+        await page.wait_for_timeout(sec(1))  # 2
         logger.info(
             f"Successfully selected {day_of_week.capitalize()} for Typical mode"
         )
@@ -582,13 +578,16 @@ async def select_typical_mode_time(page: Page, target_time: str) -> None:
             clean_time = re.sub(r":00(?=[AP]M)", "", target_time)
             pos = TIME_MAP.get(clean_time, 19)  # default at 9:00 AM
 
-        slider_track = await page.query_selector('div[jsaction="layer.timeClicked"]')
+        time_selector = 'div[jsaction="layer.timeClicked"]'
+        await page.wait_for_selector(time_selector)
+
+        slider_track = await page.query_selector(time_selector)
         if slider_track:
             track_box = await slider_track.bounding_box()
             target_x = track_box["x"] + (pos / 100) * track_box["width"]
             await page.mouse.click(target_x, track_box["y"] + track_box["height"] / 2)
 
-        # await page.wait_for_timeout(sec(2))
+        await page.wait_for_timeout(sec(1))  # 2
         logger.info(f"Successfully timed at {target_time} for Typical mode")
     except Exception as err:
         logger.warning(f"Failed to adjust the traffic time: {err}")
@@ -630,49 +629,96 @@ async def capture_google_maps_screenshot(
     live_traffic = True
 
     try:
-        page = await context.new_page()
+        with timer(f"Create new page for {lat},{lng}"):
+            page = await context.new_page()
 
-        map_url = google_map_url(lat, lng, zoom=zoom if isinstance(zoom, int) else 18)
-        await page.goto(map_url, wait_until="domcontentloaded", timeout=sec(10))
-        logger.info(f"Loading Google Maps URL: {map_url}")
-        # await page.wait_for_timeout(sec(10))
+        with timer(f"Loading map url for {lat},{lng}"):
+            map_url = google_map_url(
+                lat, lng, zoom=zoom if isinstance(zoom, int) else 18
+            )
+            await page.goto(map_url, wait_until="domcontentloaded", timeout=sec(10))
 
-        # Position the mouse in the center of the map first
-        await page.mouse.move(
-            page.viewport_size.get("width", 600) // 2,
-            page.viewport_size.get("height", 400) // 2,
-        )
+            logger.info(f"Loading Google Maps URL: {map_url}")
+            # await page.wait_for_timeout(sec(10))
 
         # Zoom operations to trigger data refresh
-        for i in range(3):
-            await page.mouse.wheel(0, 100 * (-1 if i == 0 else 1))
-            await page.wait_for_timeout(500)
+        # Position the mouse in the center of the map first
+        with timer(f"Zoom Operation for {lat},{lng}"):
+            await page.mouse.move(
+                page.viewport_size.get("width", 600) // 2,
+                page.viewport_size.get("height", 400) // 2,
+            )
+            for i in range(3):
+                await page.mouse.wheel(0, 100 * (-1 if i == 0 else 1))
+                await page.wait_for_timeout(500)
 
         # Select traffic type (typical or live)
-        if day_of_week is not None or target_time is not None:
-            try:
-                # await page.wait_for_timeout(sec(5))
-                if await select_typical_mode(page):
-                    if day_of_week is not None:
-                        await select_typical_mode_day(page, day_of_week)
-                    if target_time is not None:
-                        await select_typical_mode_time(page, target_time)
+        with timer(f"Select Typical mode for {lat},{lng}"):
+            if day_of_week is not None or target_time is not None:
+                try:
+                    if await select_typical_mode(page):
+                        if day_of_week is not None:
+                            await select_typical_mode_day(page, day_of_week)
+                        if target_time is not None:
+                            await select_typical_mode_time(page, target_time)
 
-                    live_traffic = False
-            except Exception as traffic_error:
-                logger.info(f"Using live traffic mode: {traffic_error}")
+                        live_traffic = False
+                except Exception as traffic_error:
+                    logger.info(f"Using live traffic mode: {traffic_error}")
 
         # await cleaning_up_unimportant_elements(page)
 
-        screenshot_path = await save_traffic_screenshot(
-            page, lat, lng, day_of_week, target_time
-        )
+        with timer(f"Take Screenshot for {lat},{lng}"):
+            screenshot_bytes = await get_traffic_screenshot(page)
 
-        return screenshot_path, live_traffic
+        return screenshot_bytes, live_traffic
     except Exception as err:
         logger.error(f"Failed to capture Google Maps screenshot at {lat}, {lng}: {err}")
     finally:
         await page.close()
+
+
+def process_screenshot(
+    screenshot_bytes: bytes, lat: float, lng: float, storefront_direction: str = "north"
+) -> tuple[bytes, dict[str, Any]]:
+    with Image.open(io.BytesIO(screenshot_bytes)) as image:
+        # Add pin to image
+        add_pin_to_image(image, storefront_direction)
+
+        # Analyze traffic
+        analysis = analyze_traffic_in_image(image, lat, lng, storefront_direction)
+
+        # Convert back to bytes
+        with io.BytesIO() as output_buffer:
+            image.save(output_buffer, format="PNG")
+            pinned_image_bytes = output_buffer.getvalue()
+
+        return pinned_image_bytes, analysis
+
+
+async def save_screenshot(
+    image_bytes: bytes,
+    lat: float,
+    lng: float,
+    day_of_week: Optional[str] = None,
+    target_time: Optional[str] = None,
+) -> str:
+    safe_day_of_week = (
+        str(day_of_week).replace(" ", "_") if day_of_week is not None else "no_day"
+    )
+    safe_target_time = (
+        str(target_time).replace(":", "-") if target_time is not None else "no_time"
+    )
+
+    static_path = os.path.join(
+        TRAFFIC_SCREENSHOTS_STATIC_PATH,
+        f"traffic_{lat}_{lng}_{safe_day_of_week}_{safe_target_time}_pinned.png",
+    )
+
+    async with aiofiles.open(static_path, "wb") as f:
+        await f.write(image_bytes)
+
+    return static_path
 
 
 async def analyze_location_traffic(
@@ -695,27 +741,26 @@ async def analyze_location_traffic(
 
     try:
         # Capture screenshot
-        screenshot_path, live_traffic = await capture_google_maps_screenshot(
-            context,
-            lat,
-            lng,
-            day_of_week=day_of_week,
-            target_time=target_time,
-            zoom=zoom,
-        )
+        with timer(f"Browser automation for {lat},{lng}"):
+            screenshot_bytes, live_traffic = await capture_google_maps_screenshot(
+                context,
+                lat,
+                lng,
+                day_of_week=day_of_week,
+                target_time=target_time,
+                zoom=zoom,
+            )
 
-        if not screenshot_path:
+        if not screenshot_bytes:
             error_msg = f"Failed to capture screenshot for location ({lat}, {lng})."
             logger.error(error_msg)
             raise Exception(error_msg)
 
-        # Add pin to image for verification, passing storefront_direction
-        pinned_screenshot_path = add_pin_to_image(screenshot_path, storefront_direction)
-
-        # Analyze traffic in the image, passing storefront_direction
-        analysis = analyze_traffic_in_image(
-            pinned_screenshot_path, lat, lng, storefront_direction
-        )
+        # Image processor
+        with timer(f"Image processing for {lat},{lng}"):
+            pinned_image_bytes, analysis = process_screenshot(
+                screenshot_bytes, lat, lng, storefront_direction
+            )
 
         if not analysis:
             error_msg = f"Failed to analyze traffic in screenshot for location ({lat}, {lng}). Image analysis returned no results."
@@ -723,48 +768,37 @@ async def analyze_location_traffic(
             raise Exception(error_msg)
 
         # Calculate final score
-        result = calculate_final_traffic_score(analysis)
-
-        # Cleanup original screenshot
-        if (
-            os.path.exists(screenshot_path)
-            and screenshot_path != pinned_screenshot_path
-        ):
-            os.remove(screenshot_path)
+        with timer(f"Score calculation for {lat},{lng}"):
+            result = calculate_final_traffic_score(analysis)
 
         # Handle static file saving if requested
         if save_to_static:
-            static_filename = os.path.basename(pinned_screenshot_path)
-            static_path = os.path.join(TRAFFIC_SCREENSHOTS_STATIC_PATH, static_filename)
+            with timer(f"Screenshot saving for {lat},{lng}"):
+                static_path = await save_screenshot(
+                    pinned_image_bytes, lat, lng, day_of_week, target_time
+                )
 
-            shutil.copy2(pinned_screenshot_path, static_path)
             result["screenshot_path"] = static_path
 
             # Generate screenshot URL if base_url is provided
             if request_base_url:
                 try:
-                    # Convert to string to handle URL objects
-                    base_url_str = str(request_base_url).rstrip("/")
-
                     static_root = os.path.dirname(
                         os.path.dirname(TRAFFIC_SCREENSHOTS_STATIC_PATH)
                     )
                     rel_path = os.path.relpath(static_path, static_root)
                     screenshot_url = (
-                        f"{base_url_str}/static/{rel_path.replace(os.sep, '/')}"
+                        f"{request_base_url}/static/{rel_path.replace(os.sep, '/')}"
                     )
-
                     result["screenshot_url"] = screenshot_url
                     logger.info(f"Generated screenshot URL: {screenshot_url}")
                 except Exception as e:
                     logger.warning(f"Failed to generate screenshot URL: {e}")
-        else:
-            result["screenshot_path"] = pinned_screenshot_path
 
         # Add metadata
         result.update(
             {
-                "method": "google_maps_screenshot",
+                "method": "google_maps_screenshot_async",
                 "coordinates": {"lat": lat, "lng": lng},
                 "analysis_timestamp": time.time(),
                 "storefront_details": analysis.get("storefront_details", {}),

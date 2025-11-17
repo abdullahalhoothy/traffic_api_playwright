@@ -15,6 +15,9 @@ services:
       - PLAYWRIGHT_PROXY_BYPASS=${PLAYWRIGHT_PROXY_BYPASS:-}
       - PLAYWRIGHT_PROXY_USERNAME=${PLAYWRIGHT_PROXY_USERNAME:-}
       - PLAYWRIGHT_PROXY_PASSWORD=${PLAYWRIGHT_PROXY_PASSWORD:-}
+      - PORT=8000
+      - WORKERS=1
+    shm_size: "1gb"
     volumes:
       - .:/app
       - ./static:/app/static
