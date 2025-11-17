@@ -50,26 +50,26 @@ The application consists of several key components:
     ```bash
     export JWT_SECRET="your-secret-key"
     export ADMIN_PASSWORD="admin123"
-    export RATE_LIMIT="10/minute"
+    export RATE_LIMIT="5/minute"
     ```
 
 4. **Run the application**
     ```bash
-    uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
     ```
 
 ### Docker Deployment
 
 1. **Build and run with Docker Compose**
     ```bash
-    docker-compose up --build
+    docker-compose up --build -d
     ```
 
 2. **Set environment variables in `.env` file**
     ```bash
     JWT_SECRET=your-secret-key
     ADMIN_PASSWORD=admin123
-    RATE_LIMIT=10/minute
+    RATE_LIMIT=5/minute
     PLAYWRIGHT_PROXY_SERVER=your-proxy-server
     PLAYWRIGHT_PROXY_USERNAME=your-proxy-username
     PLAYWRIGHT_PROXY_PASSWORD=your-proxy-password
@@ -91,7 +91,7 @@ The API provides comprehensive health monitoring endpoints:
 Comprehensive health check that verifies all system dependencies:
 
 - Database connectivity
-- Browser automation status
+- Worker Pool status
 - File system permissions
 
 **Response:**
@@ -105,9 +105,9 @@ Comprehensive health check that verifies all system dependencies:
       "status": "healthy",
       "details": "Database connection successful"
     },
-    "browser_automation": {
+    "worker_pool": {
       "status": "healthy",
-      "details": "Playwright browser context is available"
+      "details": "Worker Pool is Alive"
     },
     "file_system": {
       "status": "healthy",
@@ -166,7 +166,8 @@ curl -X POST "http://localhost:8000/process-location" \
       "lng": 46.6753,
       "storefront_direction": "north",
       "day": "Monday",
-      "time": "10PM"
+      "time": "10PM",
+      "zoom": 18
     }'
   }
 ```
@@ -185,14 +186,16 @@ curl -X POST "http://localhost:8000/process-locations" \
         "lng": 46.6753,
         "storefront_direction": "north",
         "day": "Monday",
-        "time": "10PM"
+        "time": "10PM",
+        "zoom": 18
       },
       {
         "lat": 24.7236,
         "lng": 46.6853,
         "storefront_direction": "south",
         "day": "Tuesday",
-        "time": "8:30AM"
+        "time": "8:30AM",
+        "zoom": 18
       }
     ]
   }'

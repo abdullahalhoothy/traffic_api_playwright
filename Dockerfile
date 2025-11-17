@@ -1,19 +1,27 @@
 FROM python:3.12-slim AS production
 
-ENV PYTHONUNBUFFERED=1
-
 RUN apt-get update && apt-get install -y \
-    curl \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+    python3-pip \
+    python3-dev \
+    build-essential \
+    libgl1 \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY requirements.txt /app/
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN playwright install --with-deps
 
-COPY . /app
+COPY . .
+
+RUN playwright install chromium
+RUN playwright install-deps
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    WORKERS=1 \
+    PORT=8000 \
+    NODE_ENV=production
 
 RUN mkdir -p /app/static/images/traffic_screenshots /app/data
 
