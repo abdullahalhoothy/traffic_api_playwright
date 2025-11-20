@@ -118,7 +118,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db=Depends(get
 
 @app.post("/process-locations")
 @app.post("/process-many")
-@limiter.limit(RATE)
+# @limiter.limit(RATE)
 async def process_locations(
     request: Request,
     payload: MultiLocationRequest,
@@ -147,7 +147,7 @@ async def process_locations(
                 },
             )
 
-        results = [None] * len(payload.locations)
+        results = {} # [None] * len(payload.locations)
         errors = []
 
         # Collect results
@@ -161,11 +161,18 @@ async def process_locations(
             else:
                 errors.append(res["error"])
 
+        # Ordered results
+        ordered_results = [
+            value
+            for _, value in sorted(results.items())
+            if value and value.get("result") is not None
+        ]
+
         response = MultiLocationResponse(
             request_id=uuid.uuid4().hex,
             locations_count=len(payload.locations),
-            completed=len(results),
-            result=[r["result"] for r in results if r.get("result")],
+            completed=len(ordered_results),
+            result=[r["result"] for r in ordered_results],
             saved_to_db=payload.save_to_db,
             saved_to_static=payload.save_to_static,
             error="\n".join(errors),
@@ -183,7 +190,7 @@ async def process_locations(
                 )
                 db.add(job)
 
-                for res in results:
+                for res in ordered_results:
                     log = TrafficLog(
                         lat=res["location"].get("lat"),
                         lng=res["location"].get("lng"),
@@ -205,14 +212,14 @@ async def process_locations(
 
         return response
     except Exception as e:
-        err_msg = f"Processing failed: {str(e)}"
+        err_msg = f"Processing-many failed: {str(e)}"
         logger.error(err_msg)
         raise HTTPException(status_code=500, detail=err_msg)
 
 
 @app.post("/process-location", response_model=LocationResponse)
 @app.post("/process-one", response_model=LocationResponse)
-@limiter.limit(RATE)
+# @limiter.limit(RATE)
 async def get_job(
     request: Request,
     payload: LocationRequest,
@@ -281,7 +288,7 @@ async def get_job(
 
         return response
     except Exception as e:
-        err_msg = f"Processing failed: {str(e)}"
+        err_msg = f"Processing-one failed: {str(e)}"
         logger.error(err_msg)
         raise HTTPException(status_code=500, detail=err_msg)
 
