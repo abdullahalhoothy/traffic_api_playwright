@@ -539,7 +539,7 @@ async def get_traffic_screenshot(
 
 async def select_typical_mode(page: Page) -> bool:
     try:
-        await page.wait_for_selector(".app-center-widget-holder", timeout=sec(100))
+        # await page.wait_for_selector(".app-center-widget-holder", timeout=sec(100))
 
         await page.get_by_role("button", name="Live traffic").click()
         # await page.wait_for_timeout(sec(1))
@@ -556,7 +556,10 @@ async def select_typical_mode(page: Page) -> bool:
 
 async def select_typical_mode_day(page: Page, day_of_week: str) -> None:
     try:
-        day_selector = "#layer div div div button"
+        # day_selector = "#layer div div div button"
+        # await page.wait_for_selector(day_selector)
+
+        day_selector = 'div[role="dialog"][aria-label="Traffic"] button[role="radio"][data-day_index]'
         await page.wait_for_selector(day_selector)
 
         day_index = DAY_MAP.get(str(day_of_week).strip().lower(), 0)
