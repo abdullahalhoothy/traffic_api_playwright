@@ -202,7 +202,7 @@ jobs:
             docker-compose pull --quiet 2>/dev/null || docker compose pull --quiet
             
             echo "🚀 Building and starting services..."
-            docker-compose up -d --build 2>/dev/null || docker compose up -d --build
+            docker-compose up -d --build --no-cache 2>/dev/null || docker compose up -d --build --no-cache
 
             echo "⏳ Waiting for services to initialize..."
             sleep 10
