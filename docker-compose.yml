@@ -4,8 +4,18 @@ services:
   api:
     build: .
     container_name: traffic_api
-    ports:
-      - "8000:8000"
+    network_mode: "host"
+
+    shm_size: "4gb"
+    mem_limit: "8g"
+    mem_reservation: "4g"
+    cpus: "4.0"
+
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+
     environment:
       - SQLITE_DB_FILE=/app/data/traffic.db
       - JWT_SECRET=${JWT_SECRET:-jwt_secret}
@@ -15,9 +25,9 @@ services:
       - PLAYWRIGHT_PROXY_BYPASS=${PLAYWRIGHT_PROXY_BYPASS:-}
       - PLAYWRIGHT_PROXY_USERNAME=${PLAYWRIGHT_PROXY_USERNAME:-}
       - PLAYWRIGHT_PROXY_PASSWORD=${PLAYWRIGHT_PROXY_PASSWORD:-}
+      - DNS_SERVERS=8.8.8.8,1.1.1.1,9.9.9.9
       - PORT=8000
-      - WORKERS=1
-    shm_size: "1gb"
+
     volumes:
       - .:/app
       - ./static:/app/static
