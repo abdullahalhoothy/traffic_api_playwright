@@ -65,9 +65,18 @@ async def lifespan(app: FastAPI):
         break
 
     POOL.start()
+    
+    # Background health check
+    async def health_checker():
+        while True:
+            await asyncio.sleep(60)
+            POOL.check_health()
+    
+    health_task = asyncio.create_task(health_checker())
 
     yield
-
+    
+    health_task.cancel()
     logger.info("🔄 Starting cleanup process...")
     POOL.stop()
 
@@ -131,10 +140,10 @@ async def process_locations(
         raise HTTPException(status_code=400, detail="Max 20 locations per request")
 
     try:
+        futures = []
         for idx, loc in enumerate(payload.locations):
-            # Dispatch jobs to worker pool
-            POOL.dispatch(
-                idx,
+            # Dispatch jobs to worker pool and get a future
+            fut = POOL.dispatch(
                 {
                     "lat": loc.lat,
                     "lng": loc.lng,
@@ -144,28 +153,29 @@ async def process_locations(
                     "zoom": loc.zoom,
                     "save_to_static": payload.save_to_static,
                     "base_url": str(request.base_url).rstrip("/"),
-                },
+                }
             )
+            futures.append((idx, fut))
 
-        results = {} # [None] * len(payload.locations)
+        results = {}
         errors = []
 
-        # Collect results
-        for _ in range(len(payload.locations)):
-            idx, res = await asyncio.get_event_loop().run_in_executor(
-                None, POOL.get_result
-            )
-
-            if res["ok"]:
-                results[idx] = res
-            else:
-                errors.append(res["error"])
+        # Wait for all results concurrently
+        for idx, fut in futures:
+            try:
+                res = await fut
+                if res["ok"]:
+                    results[idx] = res
+                else:
+                    errors.append(res["error"])
+            except Exception as e:
+                errors.append(f"Job {idx} failed: {str(e)}")
 
         # Ordered results
         ordered_results = [
-            value
-            for _, value in sorted(results.items())
-            if value and value.get("result") is not None
+            results[i]
+            for i in range(len(payload.locations))
+            if i in results and results[i].get("result") is not None
         ]
 
         response = MultiLocationResponse(
@@ -175,7 +185,7 @@ async def process_locations(
             result=[r["result"] for r in ordered_results],
             saved_to_db=payload.save_to_db,
             saved_to_static=payload.save_to_static,
-            error="\n".join(errors),
+            error="\n".join(errors) if errors else None,
         )
 
         # Save result to DB if requested
@@ -220,15 +230,14 @@ async def process_locations(
 @app.post("/process-location", response_model=LocationResponse)
 @app.post("/process-one", response_model=LocationResponse)
 # @limiter.limit(RATE)
-async def get_job(
+async def process_one(
     request: Request,
     payload: LocationRequest,
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        POOL.dispatch(
-            0,
+        fut = POOL.dispatch(
             {
                 "lat": payload.location.lat,
                 "lng": payload.location.lng,
@@ -238,15 +247,13 @@ async def get_job(
                 "zoom": payload.location.zoom,
                 "save_to_static": payload.save_to_static,
                 "base_url": str(request.base_url).rstrip("/"),
-            },
+            }
         )
 
-        _, result = await asyncio.get_event_loop().run_in_executor(
-            None, POOL.get_result
-        )
+        result = await fut
 
         if not result["ok"]:
-            raise
+            raise Exception(result["error"])
 
         response = LocationResponse(
             request_id=uuid.uuid4().hex,

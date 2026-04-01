@@ -5,16 +5,29 @@ services:
     build: .
     container_name: traffic_api
     network_mode: "host"
-
-    shm_size: "4gb"
-    mem_limit: "8g"
-    mem_reservation: "4g"
-    cpus: "4.0"
+    shm_size: "2gb"
+    restart: unless-stopped
+    
+    # Resource limits to prevent OOM on the host
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+        reservations:
+          memory: 4G
+    
+    # Logging rotation to prevent disk exhaustion
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
     ulimits:
       nofile:
-        soft: 100000
-        hard: 100000
+        soft: 65535
+        hard: 65535
 
     environment:
       - SQLITE_DB_FILE=/app/data/traffic.db
@@ -25,10 +38,16 @@ services:
       - PLAYWRIGHT_PROXY_BYPASS=${PLAYWRIGHT_PROXY_BYPASS:-}
       - PLAYWRIGHT_PROXY_USERNAME=${PLAYWRIGHT_PROXY_USERNAME:-}
       - PLAYWRIGHT_PROXY_PASSWORD=${PLAYWRIGHT_PROXY_PASSWORD:-}
-      - DNS_SERVERS=8.8.8.8,1.1.1.1,9.9.9.9
       - PORT=8000
+      - PYTHONUNBUFFERED=1
 
     volumes:
-      - .:/app
       - ./static:/app/static
       - ./data:/app/data
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+      start_period: 10s
