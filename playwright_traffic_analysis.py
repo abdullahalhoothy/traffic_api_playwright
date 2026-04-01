@@ -3,17 +3,17 @@
 
 
 import io
-import math
 import os
 import re
 import time
-from collections import Counter
-from contextlib import contextmanager
-from typing import Any, Dict, Optional, Tuple, Union
-
+import math
 import aiofiles
 import numpy as np
+
+from collections import Counter
 from PIL import Image, ImageDraw
+from contextlib import contextmanager
+from typing import Any, Dict, Optional, Tuple, Union
 from playwright.async_api import BrowserContext, Page, ViewportSize
 
 from config import logger
@@ -103,13 +103,6 @@ def classify_traffic_color(rgb: Tuple[int, int, int]) -> str:
 def add_pin_to_image(image: Image.Image, storefront_direction: str = "north") -> None:
     """Add a pin marker and directional cone to the center of the image for verification"""
     try:
-
-        # Add a small delay to ensure the file is not locked
-        # time.sleep(0.2)
-
-        # Load the image
-        # image = Image.open(io.BytesIO(image_path))
-
         # Get image center
         width, height = image.size
         center_x, center_y = width // 2, height // 2
@@ -117,26 +110,8 @@ def add_pin_to_image(image: Image.Image, storefront_direction: str = "north") ->
         # Add directional cone for storefront direction
         _add_directional_arrow(image, center_x, center_y, storefront_direction)
 
-        # Generate pinned image path
-        # pinned_path = image_path.replace(".png", "_pinned.png")
-
-        # Ensure we close the original image before saving
-        # image_copy = image.copy()
-        # image.close()
-
-        # # Save the modified image
-        # image_copy.save(pinned_path)
-        # image_copy.close()
-
-        # Add a small delay to ensure the file is fully written
-        # time.sleep(0.5)
-
-        # logger.info(f"Pin and directional cone added to image: {pinned_path}")
-        # return pinned_path
-
     except Exception as e:
         logger.error(f"Failed to add pin to image: {e}")
-        # return image_path  # Return original path if pin addition fails
 
 
 def _add_directional_arrow(
@@ -531,7 +506,7 @@ async def get_traffic_screenshot(
 ) -> bytes:
     try:
         screenshot_bytes = await page.screenshot(type="png")
-        logger.info(f"Screenshot captured at 20m zoom level.")
+        logger.info("Screenshot captured at 20m zoom level.")
         return screenshot_bytes
     except Exception as screenshot_error:
         raise Exception(f"Failed to capture screenshot: {screenshot_error}")
@@ -631,6 +606,7 @@ async def capture_google_maps_screenshot(
 
     live_traffic = True
 
+    page = None
     try:
         with timer(f"Create new page for {lat},{lng}"):
             page = await context.new_page()
@@ -680,7 +656,8 @@ async def capture_google_maps_screenshot(
     except Exception as err:
         logger.error(f"Failed to capture Google Maps screenshot at {lat}, {lng}: {err}")
     finally:
-        await page.close()
+        if page:
+            await page.close()
 
 
 def process_screenshot(
@@ -851,6 +828,7 @@ async def setup_context_with_cookies(browser: BrowserContext) -> BrowserContext:
         user_agent=USER_AGENT,
     )
 
+    setup_page = None
     try:
         # Create a temporary page to accept cookies once for this context
         setup_page = await context.new_page()
@@ -862,6 +840,7 @@ async def setup_context_with_cookies(browser: BrowserContext) -> BrowserContext:
     except Exception:
         logger.info("No cookie banner found")
     finally:
-        await setup_page.close()
+        if setup_page:
+            await setup_page.close()
 
     return context
