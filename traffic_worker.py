@@ -7,7 +7,7 @@ from playwright.async_api import ProxySettings, async_playwright
 from config import PROXY_BYPASS, PROXY_PASSWORD, PROXY_SERVER, PROXY_USERNAME, logger
 from playwright_traffic_analysis import (
     analyze_location_traffic,
-    setup_context_with_cookies, # This might need to be checked if it resets cookies
+    setup_context_with_cookies,
 )
 
 MAX_JOBS_PER_WORKER = 20
@@ -58,7 +58,6 @@ async def worker_loop(job_queue, result_queue):
         logger.info(f"✅ Worker {os.getpid()} browser initialized")
 
         while job_count < MAX_JOBS_PER_WORKER:
-            # Use run_in_executor to avoid blocking the event loop
             try:
                 job = await asyncio.get_event_loop().run_in_executor(None, job_queue.get)
             except Exception as e:
@@ -66,13 +65,12 @@ async def worker_loop(job_queue, result_queue):
                 break
 
             if job == "STOP":
-                job_queue.put("STOP") # Pass it on to others if needed (though pool sends N stops)
+                job_queue.put("STOP")
                 return
 
             job_id, location = job
             job_count += 1
 
-            # Create a FRESH context for every single job to ensure no state/memory leaks
             context = None
             try:
                 context = await setup_context_with_cookies(browser)
