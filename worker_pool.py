@@ -3,7 +3,6 @@ import threading
 import uuid
 from multiprocessing import Process, Queue
 from typing import Any, Dict, List, Optional
-
 from traffic_worker import worker_entrypoint
 from config import logger
 
@@ -52,23 +51,16 @@ class WorkerPool:
         """
         while not self._stop_event.is_set():
             try:
-                # Use a timeout so we can check the stop event
                 result_data = self.result_queue.get(timeout=1.0)
                 if result_data == "STOP":
                     break
                 
-                job_id, result = result_data
-                
-                # Check for the future and resolve it
-                # We need to be careful with thread-safety for the dictionary access
-                # but typically dict access is atomic in Python, though we use a loop callback for the future.
+                job_id, result = result_data                
                 if job_id in self._pending_jobs:
                     future = self._pending_jobs.pop(job_id)
                     if not future.done():
-                        # Use call_soon_threadsafe to resolve future in the main event loop
                         self._loop.call_soon_threadsafe(future.set_result, result)
             except Exception:
-                # Timeout is normal, other exceptions should be logged
                 continue
 
     def stop(self):
