@@ -1,6 +1,6 @@
 import asyncio
-import traceback
 import os
+import traceback
 
 from playwright.async_api import ProxySettings, async_playwright
 
@@ -11,6 +11,7 @@ from playwright_traffic_analysis import (
 )
 
 MAX_JOBS_PER_WORKER = 20
+
 
 async def worker_loop(job_queue, result_queue):
     """
@@ -59,7 +60,9 @@ async def worker_loop(job_queue, result_queue):
 
         while job_count < MAX_JOBS_PER_WORKER:
             try:
-                job = await asyncio.get_event_loop().run_in_executor(None, job_queue.get)
+                job = await asyncio.get_event_loop().run_in_executor(
+                    None, job_queue.get
+                )
             except Exception as e:
                 logger.error(f"Error getting job from queue: {e}")
                 break
@@ -74,7 +77,7 @@ async def worker_loop(job_queue, result_queue):
             context = None
             try:
                 context = await setup_context_with_cookies(browser)
-                
+
                 result = await analyze_location_traffic(
                     context,
                     lat=location["lat"],
@@ -117,6 +120,7 @@ async def worker_loop(job_queue, result_queue):
         if playwright:
             await playwright.stop()
         logger.info(f"♻️ Worker {os.getpid()} shutting down (Job count: {job_count})")
+
 
 def worker_entrypoint(job_queue, result_queue):
     """

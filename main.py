@@ -65,17 +65,17 @@ async def lifespan(app: FastAPI):
         break
 
     POOL.start()
-    
+
     # Background health check
     async def health_checker():
         while True:
             await asyncio.sleep(60)
             POOL.check_health()
-    
+
     health_task = asyncio.create_task(health_checker())
 
     yield
-    
+
     health_task.cancel()
     logger.info("🔄 Starting cleanup process...")
     POOL.stop()
@@ -201,16 +201,15 @@ async def process_locations(
                 db.add(job)
 
                 for res in ordered_results:
+                    loc = res["location"]
                     log = TrafficLog(
-                        lat=res["location"].get("lat"),
-                        lng=res["location"].get("lng"),
-                        storefront_direction=res["location"].get(
-                            "storefront_direction", "north"
-                        ),
-                        day=res["location"].get("day"),
-                        time=res["location"].get("time"),
-                        result=res["result"],
                         job_id=response.request_id,
+                        lat=loc.get("lat"),
+                        lng=loc.get("lng"),
+                        day=loc.get("day"),
+                        time=loc.get("time"),
+                        result=res["result"],
+                        storefront_direction=loc.get("storefront_direction", "north"),
                     )
                     db.add(log)
 
@@ -266,24 +265,23 @@ async def process_one(
         if payload.save_to_db:
             try:
                 job = Job(
+                    user_id=user.id,
                     request_id=response.request_id,
                     locations_count=1,
                     completed=1,
                     saved_to_static=payload.save_to_static,
-                    user_id=user.id,
                 )
                 db.add(job)
 
+                loc = result["location"]
                 log = TrafficLog(
-                    lat=result["location"].get("lat"),
-                    lng=result["location"].get("lng"),
-                    storefront_direction=result["location"].get(
-                        "storefront_direction", "north"
-                    ),
-                    day=result["location"].get("day"),
-                    time=result["location"].get("time"),
-                    result=result["result"],
                     job_id=response.request_id,
+                    lat=loc.get("lat"),
+                    lng=loc.get("lng"),
+                    day=loc.get("day"),
+                    time=loc.get("time"),
+                    result=result["result"],
+                    storefront_direction=loc.get("storefront_direction", "north"),
                 )
                 db.add(log)
 

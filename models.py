@@ -53,7 +53,10 @@ class MultiLocationRequest(BaseModel):
     )
     save_to_db: bool = Field(default=False, description="Save results to database")
     locations: List[LocationData] = Field(
-        ..., min_items=1, max_items=20, description="List of locations to analyze"
+        ...,
+        min_length=1,
+        max_length=20,
+        description="List of locations to analyze",
     )
 
 
