@@ -3,17 +3,17 @@
 
 
 import io
+import math
 import os
 import re
 import time
-import math
-import aiofiles
-import numpy as np
-
 from collections import Counter
-from PIL import Image, ImageDraw
 from contextlib import contextmanager
 from typing import Any, Dict, Optional, Tuple, Union
+
+import aiofiles
+import numpy as np
+from PIL import Image, ImageDraw
 from playwright.async_api import BrowserContext, Page, ViewportSize
 
 from config import logger
@@ -59,6 +59,8 @@ DAY_MAP = {
     "friday": 5,
     "saturday": 6,
 }
+
+DAY_MAP_BY_NUM = {v: k for k, v in DAY_MAP.items()}
 
 TIME_MAP = {"8:30AM": 16, "6PM": 75, "10PM": 99.9}
 
@@ -526,13 +528,14 @@ async def select_typical_mode(page: Page) -> bool:
     except Exception as err:
         logger.warning(f"Failed to select the traffic typical mode: {err}")
 
-    return False
 
-
-async def select_typical_mode_day(page: Page, day_of_week: str) -> None:
+async def select_typical_mode_day(page: Page, day_of_week: str | int) -> None:
     try:
-        # day_selector = "#layer div div div button"
-        # await page.wait_for_selector(day_selector)
+
+        if isinstance(day_of_week, int):
+            day_index = day_of_week
+        else:
+            day_index = DAY_MAP.get(day_of_week.strip().lower(), 0)
 
         day_selector = 'div[role="dialog"][aria-label="Traffic"] button[role="radio"][data-day_index]'
         await page.wait_for_selector(day_selector)
@@ -541,9 +544,9 @@ async def select_typical_mode_day(page: Page, day_of_week: str) -> None:
         await page.evaluate(
             f"document.querySelectorAll('{day_selector}')[{day_index}]?.click();"
         )
-        await page.wait_for_timeout(sec(1))  # 2
+        await page.wait_for_timeout(sec(1))
         logger.info(
-            f"Successfully selected {day_of_week.capitalize()} for Typical mode"
+            f"Successfully selected {DAY_MAP_BY_NUM[day_index].capitalize()} for Typical mode"
         )
     except Exception as err:
         logger.warning(f"Failed to select the traffic day of week: {err}")
@@ -552,9 +555,11 @@ async def select_typical_mode_day(page: Page, day_of_week: str) -> None:
 async def select_typical_mode_time(page: Page, target_time: str) -> None:
     try:
         target_time = target_time.strip().upper()
+        pos = 19  # default at 9:00 AM
+
         if re.fullmatch(r"(1[0-2]|[1-9])(?::[0-5]\d)?[AP]M", target_time):
             clean_time = re.sub(r":00(?=[AP]M)", "", target_time)
-            pos = TIME_MAP.get(clean_time, 19)  # default at 9:00 AM
+            pos = TIME_MAP.get(clean_time, 19)
 
         time_selector = 'div[jsaction="layer.timeClicked"]'
         await page.wait_for_selector(time_selector)
@@ -565,7 +570,7 @@ async def select_typical_mode_time(page: Page, target_time: str) -> None:
             target_x = track_box["x"] + (pos / 100) * track_box["width"]
             await page.mouse.click(target_x, track_box["y"] + track_box["height"] / 2)
 
-        await page.wait_for_timeout(sec(1))  # 2
+        await page.wait_for_timeout(sec(1))
         logger.info(f"Successfully timed at {target_time} for Typical mode")
     except Exception as err:
         logger.warning(f"Failed to adjust the traffic time: {err}")
@@ -573,8 +578,7 @@ async def select_typical_mode_time(page: Page, target_time: str) -> None:
 
 async def cleaning_up_unimportant_elements(page: Page) -> None:
     try:
-        await page.evaluate(
-            """
+        await page.evaluate("""
             // Remove only the most obstructive elements
             const selectors = [
                 '#assistive-chips',
@@ -588,8 +592,7 @@ async def cleaning_up_unimportant_elements(page: Page) -> None:
                 const el = document.querySelector(sel);
                 if (el) el.remove();
             });
-            """
-        )
+            """)
         logger.info("Successfully cleaned up UI elements")
     except Exception as cleanup_error:
         logger.warning(f"Failed to clean up UI elements: {cleanup_error}")
@@ -604,9 +607,9 @@ async def capture_google_maps_screenshot(
     zoom: Optional[int] = 18,
 ) -> tuple[str, bool]:
 
+    page = None
     live_traffic = True
 
-    page = None
     try:
         with timer(f"Create new page for {lat},{lng}"):
             page = await context.new_page()

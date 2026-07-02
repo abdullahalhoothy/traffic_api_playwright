@@ -3,8 +3,9 @@ import threading
 import uuid
 from multiprocessing import Process, Queue
 from typing import Any, Dict, List, Optional
-from traffic_worker import worker_entrypoint
+
 from config import logger
+from traffic_worker import worker_entrypoint
 
 
 class WorkerPool:
@@ -21,13 +22,15 @@ class WorkerPool:
     def start(self):
         self._loop = asyncio.get_running_loop()
         self._stop_event.clear()
-        
+
         # Start workers
         for i in range(self.num_workers):
             self._spawn_worker(i)
 
         # Start result collection thread
-        self._result_thread = threading.Thread(target=self._result_collector, daemon=True)
+        self._result_thread = threading.Thread(
+            target=self._result_collector, daemon=True
+        )
         self._result_thread.start()
         logger.info(f"🚀 WorkerPool started with {self.num_workers} workers")
 
@@ -54,11 +57,13 @@ class WorkerPool:
                 result_data = self.result_queue.get(timeout=1.0)
                 if result_data == "STOP":
                     break
-                
-                job_id, result = result_data                
+
+                job_id, result = result_data
                 if job_id in self._pending_jobs:
                     future = self._pending_jobs.pop(job_id)
                     if not future.done():
+                        if self._loop is None:
+                            self._loop = asyncio.get_running_loop()
                         self._loop.call_soon_threadsafe(future.set_result, result)
             except Exception:
                 continue
@@ -76,7 +81,7 @@ class WorkerPool:
             if p.is_alive():
                 p.terminate()
             p.join()
-        
+
         logger.info("🛑 WorkerPool stopped")
 
     def dispatch(self, loc_dict: Dict[str, Any]) -> asyncio.Future:
@@ -84,9 +89,13 @@ class WorkerPool:
         Send a job to workers and return a future that will resolve with the result.
         """
         job_id = str(uuid.uuid4())
+
+        if self._loop is None:
+            self._loop = asyncio.get_running_loop()
+
         future = self._loop.create_future()
         self._pending_jobs[job_id] = future
-        
+
         self.job_queue.put((job_id, loc_dict))
         return future
 
