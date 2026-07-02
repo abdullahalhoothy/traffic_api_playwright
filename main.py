@@ -65,17 +65,17 @@ async def lifespan(app: FastAPI):
         break
 
     POOL.start()
-    
+
     # Background health check
     async def health_checker():
         while True:
             await asyncio.sleep(60)
             POOL.check_health()
-    
+
     health_task = asyncio.create_task(health_checker())
 
     yield
-    
+
     health_task.cancel()
     logger.info("🔄 Starting cleanup process...")
     POOL.stop()
@@ -141,6 +141,8 @@ async def process_locations(
 
     try:
         futures = []
+        locations_count = len(payload.locations)
+
         for idx, loc in enumerate(payload.locations):
             # Dispatch jobs to worker pool and get a future
             fut = POOL.dispatch(
@@ -174,13 +176,13 @@ async def process_locations(
         # Ordered results
         ordered_results = [
             results[i]
-            for i in range(len(payload.locations))
+            for i in range(locations_count)
             if i in results and results[i].get("result") is not None
         ]
 
         response = MultiLocationResponse(
             request_id=uuid.uuid4().hex,
-            locations_count=len(payload.locations),
+            locations_count=locations_count,
             completed=len(ordered_results),
             result=[r["result"] for r in ordered_results],
             saved_to_db=payload.save_to_db,
@@ -201,16 +203,15 @@ async def process_locations(
                 db.add(job)
 
                 for res in ordered_results:
+                    loc = res["location"]
                     log = TrafficLog(
-                        lat=res["location"].get("lat"),
-                        lng=res["location"].get("lng"),
-                        storefront_direction=res["location"].get(
-                            "storefront_direction", "north"
-                        ),
-                        day=res["location"].get("day"),
-                        time=res["location"].get("time"),
+                        lat=loc.get("lat"),
+                        lng=loc.get("lng"),
+                        day=loc.get("day"),
+                        time=loc.get("time"),
                         result=res["result"],
                         job_id=response.request_id,
+                        storefront_direction=loc.get("storefront_direction", "north"),
                     )
                     db.add(log)
 
@@ -274,14 +275,14 @@ async def process_one(
                 )
                 db.add(job)
 
+                loc = result["location"]
+
                 log = TrafficLog(
-                    lat=result["location"].get("lat"),
-                    lng=result["location"].get("lng"),
-                    storefront_direction=result["location"].get(
-                        "storefront_direction", "north"
-                    ),
-                    day=result["location"].get("day"),
-                    time=result["location"].get("time"),
+                    lat=loc.get("lat"),
+                    lng=loc.get("lng"),
+                    storefront_direction=loc.get("storefront_direction", "north"),
+                    day=loc.get("day"),
+                    time=loc.get("time"),
                     result=result["result"],
                     job_id=response.request_id,
                 )
