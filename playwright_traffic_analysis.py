@@ -304,7 +304,7 @@ def find_storefront_traffic(
 
 
 def analyze_traffic_in_image(
-    image: Image.Image,  # str,
+    image: Image.Image,
     center_lat: float,
     center_lng: float,
     storefront_direction: str = "north",
@@ -528,10 +528,11 @@ async def select_typical_mode(page: Page) -> bool:
     except Exception as err:
         logger.warning(f"Failed to select the traffic typical mode: {err}")
 
+    return False
+
 
 async def select_typical_mode_day(page: Page, day_of_week: str | int) -> None:
     try:
-
         if isinstance(day_of_week, int):
             day_index = day_of_week
         else:
@@ -605,10 +606,11 @@ async def capture_google_maps_screenshot(
     day_of_week: Optional[Union[str, int]] = None,
     target_time: Optional[str] = None,
     zoom: Optional[int] = 18,
-) -> tuple[str, bool]:
+) -> tuple[bytes | None, bool]:
 
     page = None
     live_traffic = True
+    screenshot_bytes = None
 
     try:
         with timer(f"Create new page for {lat},{lng}"):
@@ -637,30 +639,28 @@ async def capture_google_maps_screenshot(
             #     await page.wait_for_timeout(500)
 
         # Select traffic type (typical or live)
-        with timer(f"Select Typical mode for {lat},{lng}"):
-            if day_of_week or target_time:
-                try:
-                    if await select_typical_mode(page):
-                        if day_of_week is not None:
-                            await select_typical_mode_day(page, day_of_week)
-                        if target_time is not None:
-                            await select_typical_mode_time(page, target_time)
+        if day_of_week or target_time:
+            with timer(f"Select Typical mode for {lat},{lng}"):
+                if await select_typical_mode(page):
+                    if day_of_week is not None:
+                        await select_typical_mode_day(page, day_of_week)
+                    if target_time is not None:
+                        await select_typical_mode_time(page, target_time)
 
-                        live_traffic = False
-                except Exception as traffic_error:
-                    logger.info(f"Using live traffic mode: {traffic_error}")
+                    live_traffic = False
 
         # await cleaning_up_unimportant_elements(page)
 
         with timer(f"Take Screenshot for {lat},{lng}"):
             screenshot_bytes = await get_traffic_screenshot(page)
 
-        return screenshot_bytes, live_traffic
     except Exception as err:
         logger.error(f"Failed to capture Google Maps screenshot at {lat}, {lng}: {err}")
     finally:
         if page:
             await page.close()
+
+    return screenshot_bytes, live_traffic
 
 
 def process_screenshot(
@@ -825,25 +825,28 @@ async def accept_cookies(page: Page) -> bool:
 async def setup_context_with_cookies(browser: BrowserContext) -> BrowserContext:
     """Setup context and accept cookies once for all pages"""
 
-    context = await browser.new_context(
-        locale="en-US",
-        viewport=ViewportSize(width=1200, height=800),
-        user_agent=USER_AGENT,
-    )
-
-    setup_page = None
-    try:
-        # Create a temporary page to accept cookies once for this context
-        setup_page = await context.new_page()
-        await setup_page.goto(
-            google_map_url(0, 0, zoom=0), wait_until="domcontentloaded", timeout=sec(10)
+    with timer(f"Create new context and accept cookies"):
+        context = await browser.new_context(
+            locale="en-US",
+            viewport=ViewportSize(width=1200, height=800),
+            user_agent=USER_AGENT,
         )
-        await accept_cookies(setup_page)
-        logger.info("Cookie banner accepted")
-    except Exception:
-        logger.info("No cookie banner found")
-    finally:
-        if setup_page:
-            await setup_page.close()
 
-    return context
+        setup_page = None
+        try:
+            # Create a temporary page to accept cookies once for this context
+            setup_page = await context.new_page()
+            await setup_page.goto(
+                google_map_url(0, 0, zoom=0),
+                wait_until="domcontentloaded",
+                timeout=sec(10),
+            )
+            await accept_cookies(setup_page)
+            logger.info("Cookie banner accepted")
+        except Exception:
+            logger.info("No cookie banner found")
+        finally:
+            if setup_page:
+                await setup_page.close()
+
+        return context
