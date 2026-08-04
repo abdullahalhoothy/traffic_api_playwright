@@ -687,7 +687,7 @@ async def save_screenshot(
     lng: float,
     day_of_week: Optional[str] = None,
     target_time: Optional[str] = None,
-) -> str:
+) -> tuple[str, str]:
     safe_day_of_week = (
         str(day_of_week).replace(" ", "_") if day_of_week is not None else "no_day"
     )
@@ -695,15 +695,16 @@ async def save_screenshot(
         str(target_time).replace(":", "-") if target_time is not None else "no_time"
     )
 
+    filename = f"traffic_{lat}_{lng}_{safe_day_of_week}_{safe_target_time}_pinned.png"
     static_path = os.path.join(
         TRAFFIC_SCREENSHOTS_STATIC_PATH,
-        f"traffic_{lat}_{lng}_{safe_day_of_week}_{safe_target_time}_pinned.png",
+        filename,
     )
 
     async with aiofiles.open(static_path, "wb") as f:
         await f.write(image_bytes)
 
-    return static_path
+    return static_path, filename
 
 
 async def analyze_location_traffic(
@@ -759,11 +760,12 @@ async def analyze_location_traffic(
         # Handle static file saving if requested
         if save_to_static:
             with timer(f"Screenshot saving for {lat},{lng}"):
-                static_path = await save_screenshot(
+                static_path, filename = await save_screenshot(
                     pinned_image_bytes, lat, lng, day_of_week, target_time
                 )
 
             result["screenshot_path"] = static_path
+            result["screenshot_name"] = filename
 
             # Generate screenshot URL if base_url is provided
             if request_base_url:
