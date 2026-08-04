@@ -8,9 +8,10 @@ import os
 import uuid
 from contextlib import asynccontextmanager
 from datetime import timedelta
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter
@@ -46,7 +47,6 @@ limiter = Limiter(key_func=get_remote_address)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # os.makedirs(TRAFFIC_SCREENSHOTS_PATH, exist_ok=True)
     os.makedirs(TRAFFIC_SCREENSHOTS_STATIC_PATH, exist_ok=True)
 
     # Create database tables
@@ -90,6 +90,36 @@ app.add_exception_handler(
         status_code=429, content={"detail": "Too many requests"}
     ),
 )
+
+STATIC_ROOT = Path("static").resolve()
+TRAFFIC_SCREENSHOTS_ROOT = Path(TRAFFIC_SCREENSHOTS_STATIC_PATH).resolve()
+
+
+def _is_safe_static_file(base_dir: Path, candidate: Path) -> bool:
+    try:
+        base_dir = base_dir.resolve()
+        candidate = candidate.resolve()
+        return candidate.is_file() and os.path.commonpath(
+            [str(base_dir), str(candidate)]
+        ) == str(base_dir)
+    except (ValueError, OSError):
+        return False
+
+
+@app.get("/static/{file_path:path}")
+async def serve_static_alias(file_path: str):
+    requested_path = Path(file_path)
+
+    screenshot_candidate = (TRAFFIC_SCREENSHOTS_ROOT / requested_path).resolve()
+    if _is_safe_static_file(TRAFFIC_SCREENSHOTS_ROOT, screenshot_candidate):
+        return FileResponse(screenshot_candidate)
+
+    general_candidate = (STATIC_ROOT / requested_path).resolve()
+    if _is_safe_static_file(STATIC_ROOT, general_candidate):
+        return FileResponse(general_candidate)
+
+    raise HTTPException(status_code=404, detail="File not found")
+
 
 # static directory
 os.makedirs("static/images/traffic_screenshots", exist_ok=True)
