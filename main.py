@@ -114,9 +114,9 @@ async def serve_static_alias(file_path: str):
     if _is_safe_static_file(TRAFFIC_SCREENSHOTS_ROOT, screenshot_candidate):
         return FileResponse(screenshot_candidate)
 
-    # general_candidate = (STATIC_ROOT / requested_path).resolve()
-    # if _is_safe_static_file(STATIC_ROOT, general_candidate):
-    #     return FileResponse(general_candidate)
+    general_candidate = (STATIC_ROOT / requested_path).resolve()
+    if _is_safe_static_file(STATIC_ROOT, general_candidate):
+        return FileResponse(general_candidate)
 
     raise HTTPException(status_code=404, detail="File not found")
 
