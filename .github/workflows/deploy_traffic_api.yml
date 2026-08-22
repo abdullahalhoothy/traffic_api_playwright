@@ -4,6 +4,11 @@ on:
   # push:
   #   branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      branch_name:
+        description: 'select repository branch.'
+        required: true
+        default: 'main'
 
 env:
   TRAFFIC_API_DIR: /traffic_api
@@ -15,6 +20,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch_name }}
 
       - name: Install system dependencies on VPS
         uses: appleboy/ssh-action@v1.0.3
