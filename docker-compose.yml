@@ -7,7 +7,7 @@ services:
     network_mode: "host"
     shm_size: "2gb"
     restart: unless-stopped
-    
+
     # Resource limits to prevent OOM on the host
     deploy:
       resources:
@@ -16,13 +16,12 @@ services:
           memory: 8G
         reservations:
           memory: 4G
-    
-    # Logging rotation to prevent disk exhaustion
+
     logging:
-      driver: "json-file"
+      driver: journald
       options:
-        max-size: "10m"
-        max-file: "3"
+        tag: "traffic_api"
+        labels: "traffic_service"
 
     ulimits:
       nofile:
