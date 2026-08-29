@@ -21,7 +21,6 @@ services:
       driver: journald
       options:
         tag: "traffic_api"
-        labels: "traffic_service"
 
     ulimits:
       nofile:
