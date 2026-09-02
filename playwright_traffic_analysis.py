@@ -62,8 +62,6 @@ DAY_MAP = {
 
 DAY_MAP_BY_NUM = {v: k for k, v in DAY_MAP.items()}
 
-TIME_MAP = {"8:30AM": 16, "6PM": 75, "10PM": 99.9}
-
 TRAFFIC_SCREENSHOTS_STATIC_PATH = os.path.join(
     os.path.dirname(__file__),
     "static",
@@ -553,26 +551,55 @@ async def select_typical_mode_day(page: Page, day_of_week: str | int) -> None:
         logger.warning(f"Failed to select the traffic day of week: {err}")
 
 
+def calculate_slider_percentage(time_str: str) -> float:
+    # Match strings like "6am", "10:30 PM", "9 AM"
+    match = re.match(r"^(\d{1,2})(?::(\d{2}))?\s*([AP]M)$", time_str.strip().upper())
+
+    # Default to 9:00 AM (18.75% of the slider) if parsing fails
+    if not match:
+        return 18.75
+
+    hour = int(match.group(1))
+    minute = int(match.group(2) or 0)
+    meridiem = match.group(3)
+
+    if meridiem == "PM" and hour != 12:
+        hour += 12
+    elif meridiem == "AM" and hour == 12:
+        hour = 0
+
+    total_minutes = (hour * 60) + minute
+
+    # Set boundaries in minutes (6 AM = 360, 10 PM = 1320)
+    min_minutes = 360
+    max_minutes = 1320
+
+    # Clamp input to map boundaries
+    total_minutes = max(min_minutes, min(total_minutes, max_minutes))
+
+    # Calculate percentage across the 960-minute span
+    return ((total_minutes - min_minutes) / 960) * 100
+
+
 async def select_typical_mode_time(page: Page, target_time: str) -> None:
     try:
-        target_time = target_time.strip().upper()
-        pos = 19  # default at 9:00 AM
+        # Get dynamic percentage (0 to 100)
+        pos = calculate_slider_percentage(target_time)
 
-        if re.fullmatch(r"(1[0-2]|[1-9])(?::[0-5]\d)?[AP]M", target_time):
-            clean_time = re.sub(r":00(?=[AP]M)", "", target_time)
-            pos = TIME_MAP.get(clean_time, 19)
+        slider_track = page.locator('div[jsaction="layer.timeClicked"]').first
+        await slider_track.wait_for(state="visible", timeout=5000)
 
-        time_selector = 'div[jsaction="layer.timeClicked"]'
-        await page.wait_for_selector(time_selector)
+        track_box = await slider_track.bounding_box()
+        if track_box:
+            # Apply percentage to the slider's physical width
+            target_x = track_box["x"] + ((pos / 100) * track_box["width"])
+            target_y = track_box["y"] + (track_box["height"] / 2)
 
-        slider_track = await page.query_selector(time_selector)
-        if slider_track:
-            track_box = await slider_track.bounding_box()
-            target_x = track_box["x"] + (pos / 100) * track_box["width"]
-            await page.mouse.click(target_x, track_box["y"] + track_box["height"] / 2)
+            await page.mouse.click(target_x, target_y)
 
-        await page.wait_for_timeout(sec(1))
-        logger.info(f"Successfully timed at {target_time} for Typical mode")
+        await page.wait_for_timeout(1000)
+        logger.info(f"Successfully set slider to {target_time} ({pos:.1f}%)")
+
     except Exception as err:
         logger.warning(f"Failed to adjust the traffic time: {err}")
 
@@ -817,7 +844,7 @@ async def accept_cookies(page: Page) -> bool:
     for selector in selectors:
         try:
             await page.get_by_role("button", name=selector).click()
-            await page.wait_for_timeout(sec(5))
+            await page.wait_for_timeout(sec(2))
             return True
         except Exception:
             continue
